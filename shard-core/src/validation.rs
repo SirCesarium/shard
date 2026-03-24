@@ -24,11 +24,13 @@ impl Validator {
     /// - `ShardError::InvalidSequence`: If `SEQUENCE_ID` <= `LAST_SEQ`.
     /// - `ShardError::TimestampOutOfWindow`: If drift > 5000ms.
     pub fn check_and_update(&self, sequence_id: u64, timestamp: u64) -> Result<(), ShardError> {
-        let internal_error = |_e: &str| {
-            #[cfg(debug_assertions)]
-            println!("[DEBUG] Validation drop: {_e}");
+        #[cfg(debug_assertions)]
+        let internal_error = |e: &str| {
+            println!("[DEBUG] Validation drop: {e}");
             ShardError::InvalidFrame
         };
+        #[cfg(not(debug_assertions))]
+        let internal_error = |_e: &str| ShardError::InvalidFrame;
 
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)

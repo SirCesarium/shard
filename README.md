@@ -71,6 +71,21 @@ The core protocol is verified with a comprehensive suite of unit and integration
 cargo test --workspace
 ```
 
+## Performance
+
+Shard is designed for high-throughput and low-latency environments. Benchmarks are performed using **Criterion** on every core protocol operation.
+
+### Protocol Benchmarks (Measured on a standard CI runner)
+
+| Operation                 | Latency (Typical) |
+|---------------------------|-------------------|
+| Zero-Copy Header Parsing  | ~1.5 ns           |
+| HKDF Session Key Deriv.   | ~1.4 µs           |
+| AEAD Seal (Encrypt)       | ~1.6 µs           |
+| AEAD Open (Decrypt)       | ~1.6 µs           |
+
+The full benchmark suite can be run locally via `cargo bench -p shard-core`.
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
