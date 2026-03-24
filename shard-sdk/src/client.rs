@@ -1,5 +1,6 @@
 //! Shard asynchronous UDP client implementation.
 use crate::config::ShardConfig;
+use rand::Rng;
 use shard_core::consts::VERSION;
 use shard_core::crypto::encrypt_frame_payload;
 use shard_core::frame::ShardHeader;
@@ -8,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::UdpSocket;
 use zerocopy::IntoBytes;
-use zerocopy::big_endian::U64;
+use zerocopy::big_endian::{U32, U64};
 
 /// A hardened UDP client for sending encrypted Shard frames.
 pub struct ShardClient {
@@ -47,13 +48,25 @@ impl ShardClient {
             .map(|d| u64::try_from(d.as_millis()).unwrap_or(0))
             .map_err(|_| crate::ShardError::CryptoError)?;
 
+        let mut nonce = [0u8; 12];
+        rand::rng().fill_bytes(&mut nonce);
+
+        let payload_len_usize = payload.len();
+        if payload_len_usize > shard_core::consts::MAX_PAYLOAD_SIZE {
+            return Err(crate::ShardError::PayloadTooLarge(payload_len_usize));
+        }
+
+        let payload_len_u32: u32 = payload_len_usize
+            .try_into()
+            .map_err(|_| crate::ShardError::InvalidPayloadLength)?;
+
         let mut header = ShardHeader {
             version: VERSION,
             frame_type: 0x00, // Request
             sequence_id: U64::new(seq),
             timestamp: U64::new(now),
-            nonce: [0u8; 12],
-            payload_len: 0.into(),
+            nonce,
+            payload_len: U32::new(payload_len_u32),
         };
 
         let mut buffer = payload.to_vec();
