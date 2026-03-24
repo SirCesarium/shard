@@ -1,26 +1,14 @@
-//! Shard Core
+//! # Shard Core
 //!
-//! Internal primitives and cryptographic core for the Shard protocol.
+//! Internal primitives for the Shard Protocol.
 
-/// Adds two integers.
-///
-/// # Examples
-/// ```
-/// let result = shard_core::add(1, 2);
-/// assert_eq!(result, 3);
-/// ```
-#[must_use]
-pub const fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+#![deny(clippy::all, clippy::pedantic, clippy::nursery, missing_docs)]
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod consts;
+pub mod error;
+pub mod types;
+pub mod frame;
+pub mod crypto;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use crate::error::ShardError;
+pub use crate::types::{FrameType, ProtocolError};
