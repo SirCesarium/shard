@@ -66,7 +66,8 @@ impl<'a> ShardFrame<'a> {
 
         // Parse and validate payload length (Section 2.3).
         let payload_len_raw = header.payload_len.get();
-        let payload_len = usize::try_from(payload_len_raw).map_err(|_| ShardError::InvalidPayloadLength)?;
+        let payload_len =
+            usize::try_from(payload_len_raw).map_err(|_| ShardError::InvalidPayloadLength)?;
 
         if payload_len > MAX_PAYLOAD_SIZE {
             return Err(ShardError::PayloadTooLarge(payload_len));

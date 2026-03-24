@@ -23,7 +23,8 @@ pub fn derive_session_key(master_psk: &[u8; 32], sequence_id: u64) -> Result<[u8
         .map_err(|_| ShardError::CryptoError)?;
 
     let mut session_key = [0u8; 32];
-    okm.fill(&mut session_key).map_err(|_| ShardError::CryptoError)?;
+    okm.fill(&mut session_key)
+        .map_err(|_| ShardError::CryptoError)?;
 
     Ok(session_key)
 }

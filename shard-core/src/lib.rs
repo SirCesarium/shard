@@ -5,10 +5,10 @@
 #![deny(clippy::all, clippy::pedantic, clippy::nursery, missing_docs)]
 
 pub mod consts;
-pub mod error;
-pub mod types;
-pub mod frame;
 pub mod crypto;
+pub mod error;
+pub mod frame;
+pub mod types;
 pub mod validation;
 
 pub use crate::error::ShardError;

@@ -19,7 +19,7 @@ pub enum ShardError {
         /// The version we expect (0x01).
         expected: u8,
         /// The version we got.
-        found: u8
+        found: u8,
     },
 
     /// The sequence ID is lower or equal to the last one (Section 3.1).

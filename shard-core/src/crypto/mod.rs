@@ -82,7 +82,12 @@ pub fn decrypt_frame_payload(
     let aad = header.as_bytes();
 
     // Decrypt in place within the temporary buffer
-    let plaintext = aead::decrypt(&session_key, &header.nonce, aad, &mut contiguous_buffer[..total_len])?;
+    let plaintext = aead::decrypt(
+        &session_key,
+        &header.nonce,
+        aad,
+        &mut contiguous_buffer[..total_len],
+    )?;
 
     // Copy back the verified plaintext to the original slice
     ciphertext.copy_from_slice(plaintext);
