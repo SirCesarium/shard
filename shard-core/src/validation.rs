@@ -24,9 +24,9 @@ impl Validator {
     /// - `ShardError::InvalidSequence`: If `SEQUENCE_ID` <= `LAST_SEQ`.
     /// - `ShardError::TimestampOutOfWindow`: If drift > 5000ms.
     pub fn check_and_update(&self, sequence_id: u64, timestamp: u64) -> Result<(), ShardError> {
-        let internal_error = |e: &str| {
+        let internal_error = |_e: &str| {
             #[cfg(debug_assertions)]
-            println!("[DEBUG] Validation drop: {e}");
+            println!("[DEBUG] Validation drop: {_e}");
             ShardError::InvalidFrame
         };
 
@@ -118,6 +118,56 @@ mod tests {
             validator.check_and_update(4, now + 5100),
             Err(ShardError::InvalidFrame)
         ));
+
+        // Exact 5000ms drift should be valid (inclusive boundary)
+        assert!(validator.check_and_update(5, now - 5000).is_ok());
+    }
+
+    #[test]
+    fn test_network_reordering_regression() {
+        let validator = Validator::new();
+        let now = current_ts();
+
+        // Packet 2 arrives first (valid)
+        assert!(validator.check_and_update(2, now).is_ok());
+
+        // Packet 1 arrives late (must be rejected as regression)
+        assert!(matches!(
+            validator.check_and_update(1, now),
+            Err(ShardError::InvalidFrame)
+        ));
+
+        // Packet 3 arrives (valid)
+        assert!(validator.check_and_update(3, now).is_ok());
+    }
+
+    #[test]
+    fn test_concurrent_sequence_updates() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let validator = Arc::new(Validator::new());
+        let mut handles = vec![];
+
+        for i in 1..=100 {
+            let v = Arc::clone(&validator);
+            let h = thread::spawn(move || {
+                // Each thread tries to update to its own index
+                // Some will succeed, some will fail depending on timing
+                let _ = v.check_and_update(i, current_ts());
+            });
+            handles.push(h);
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        // After all threads, the last_seq must be at most 100
+        // (Since they all sent unique IDs 1-100)
+        assert!(validator.last_seq.load(Ordering::SeqCst) <= 100);
+        // And it should be at least some value if any thread succeeded
+        assert!(validator.last_seq.load(Ordering::SeqCst) > 0);
     }
 
     fn current_ts() -> u64 {

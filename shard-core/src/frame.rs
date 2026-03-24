@@ -26,6 +26,25 @@ pub struct ShardHeader {
     pub payload_len: U32,
 }
 
+impl ShardHeader {
+    /// Creates a raw error frame response from this header.
+    ///
+    /// The payload of an error frame is a single byte representing the error code.
+    /// Note: This frame itself is not encrypted as per specification Section 5.
+    #[must_use]
+    pub fn create_error_response(&self, error_code: u8) -> Vec<u8> {
+        let mut header = *self;
+        header.frame_type = 0x02; // Error Type
+        header.payload_len = U32::new(1);
+
+        let mut buffer = Vec::with_capacity(HEADER_SIZE + 1 + AUTH_TAG_SIZE);
+        buffer.extend_from_slice(header.as_bytes());
+        buffer.push(error_code);
+        buffer.extend_from_slice(&[0u8; AUTH_TAG_SIZE]); // Empty tag for unencrypted error frames
+        buffer
+    }
+}
+
 /// A complete Shard frame containing the header, ciphertext, and authentication tag.
 #[derive(Debug, Clone)]
 pub struct ShardFrame<'a> {
@@ -45,12 +64,11 @@ impl<'a> ShardFrame<'a> {
     /// Returns `ShardError::InvalidVersion` if the version field is not 0x01.
     /// Returns `ShardError::InvalidPayloadLength` if the payload length exceeds the hard cap.
     pub fn from_bytes(buffer: &'a [u8]) -> Result<Self, ShardError> {
-        let internal_error = |e: &str| {
+        let internal_error = |_e: &str| {
             #[cfg(debug_assertions)]
-            println!("[DEBUG] Frame drop reason: {e}");
+            println!("[DEBUG] Frame drop reason: {_e}");
             ShardError::InvalidFrame
         };
-
         if buffer.len() < HEADER_SIZE + AUTH_TAG_SIZE {
             return Err(internal_error("Buffer too small"));
         }
@@ -170,5 +188,39 @@ mod tests {
 
         let result = ShardFrame::from_bytes(&buffer);
         assert!(matches!(result, Err(ShardError::InvalidFrame)));
+    }
+
+    #[test]
+    fn test_error_frame_creation_and_parsing() -> Result<(), ShardError> {
+        let header = ShardHeader {
+            version: VERSION,
+            frame_type: 0x00,
+            sequence_id: U64::new(1),
+            timestamp: U64::new(0),
+            nonce: [0u8; 12],
+            payload_len: U32::new(0),
+        };
+
+        let error_code = 0x02; // REPLAY_DETECTED
+        let response = header.create_error_response(error_code);
+
+        let frame = ShardFrame::from_bytes(&response)?;
+        assert_eq!(frame.header.frame_type, 0x02);
+        assert_eq!(frame.header.payload_len.get(), 1);
+        assert_eq!(frame.ciphertext[0], error_code);
+        assert_eq!(frame.auth_tag, [0u8; 16]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_malformed_garbage_data() {
+        let mut buffer = vec![0u8; 100];
+        rand::rng().fill_bytes(&mut buffer);
+        buffer[0] = VERSION; // Force correct version but rest is garbage
+
+        let result = ShardFrame::from_bytes(&buffer);
+        // Most likely to fail due to payload length or total size mismatch
+        assert!(result.is_err());
     }
 }

@@ -8,7 +8,7 @@ pub mod hkdf;
 
 use crate::frame::ShardHeader;
 use crate::{consts::MAX_PAYLOAD_SIZE, error::ShardError};
-use ring::rand::{SecureRandom, SystemRandom};
+use ring::aead::{Aad, LessSafeKey, UnboundKey, CHACHA20_POLY1305};
 use zerocopy::IntoBytes;
 use zerocopy::big_endian::U32;
 
@@ -31,25 +31,28 @@ pub fn encrypt_frame_payload(
     }
 
     let actual_len = u32::try_from(payload.len()).map_err(|_| ShardError::CryptoError)?;
-
     header.payload_len = U32::new(actual_len);
 
-    let sequence_id_raw = header.sequence_id.get();
-    let session_key = hkdf::derive_session_key(master_psk, sequence_id_raw)?;
+    // Section 2.2: KDR implementation
+    let session_key = hkdf::derive_session_key(master_psk, header.sequence_id.get())?;
 
-    let mut nonce = [0u8; 12];
-    nonce[0..8].copy_from_slice(header.sequence_id.as_bytes());
+    let unbound_key = UnboundKey::new(&CHACHA20_POLY1305, &session_key)
+        .map_err(|_| ShardError::CryptoError)?;
+    let encryption_key = LessSafeKey::new(unbound_key);
 
-    let rng = SystemRandom::new();
-    rng.fill(&mut nonce[8..12])
+    let nonce = ring::aead::Nonce::try_assume_unique_for_key(&header.nonce)
         .map_err(|_| ShardError::CryptoError)?;
 
-    header.nonce = nonce;
+    // Section 2.1: The entire header is used as AAD (Offsets 0 to 33).
+    let aad = Aad::from(header.as_bytes());
 
-    // The entire header is used as AAD (Offsets 0 to 33).
-    let aad = header.as_bytes();
+    let tag = encryption_key
+        .seal_in_place_separate_tag(nonce, aad, payload)
+        .map_err(|_| ShardError::CryptoError)?;
 
-    aead::encrypt(&session_key, &header.nonce, aad, payload)
+    let mut auth_tag = [0u8; 16];
+    auth_tag.copy_from_slice(tag.as_ref());
+    Ok(auth_tag)
 }
 
 /// Decrypts a ciphertext payload and verifies its integrity.
@@ -65,39 +68,38 @@ pub fn decrypt_frame_payload(
     ciphertext: &mut [u8],
     auth_tag: &[u8; 16],
 ) -> Result<(), ShardError> {
-    let internal_error = |e: &str| {
+    let internal_error = |_e: &str| {
         #[cfg(debug_assertions)]
-        println!("[DEBUG] Decryption drop: {e}");
-        ShardError::InvalidFrame
+        println!("[DEBUG] Decryption drop: {_e}");
+        ShardError::CryptoError
     };
 
-    let payload_len = header.payload_len.get() as usize;
+    let payload_len = usize::try_from(header.payload_len.get()).map_err(|_| ShardError::CryptoError)?;
     if ciphertext.len() != payload_len {
         return Err(internal_error("Ciphertext length mismatch"));
     }
 
-    let sequence_id = header.sequence_id.get();
-    let session_key = hkdf::derive_session_key(master_psk, sequence_id)
-        .map_err(|_| internal_error("Key derivation failed"))?;
+    // Section 2.2: KDR implementation
+    let session_key = hkdf::derive_session_key(master_psk, header.sequence_id.get())?;
 
-    let mut contiguous_buffer = [0u8; MAX_PAYLOAD_SIZE + 16];
-    let total_len = payload_len + 16;
+    let unbound_key = UnboundKey::new(&CHACHA20_POLY1305, &session_key)
+        .map_err(|_| ShardError::CryptoError)?;
+    let decryption_key = LessSafeKey::new(unbound_key);
 
-    contiguous_buffer[..payload_len].copy_from_slice(ciphertext);
-    contiguous_buffer[payload_len..total_len].copy_from_slice(auth_tag);
+    let nonce = ring::aead::Nonce::try_assume_unique_for_key(&header.nonce)
+        .map_err(|_| ShardError::CryptoError)?;
 
-    let aad = header.as_bytes();
+    // Section 2.1: The entire header is used as AAD.
+    let aad = Aad::from(header.as_bytes());
 
-    // Decrypt in place within the temporary buffer
-    let plaintext = aead::decrypt(
-        &session_key,
-        &header.nonce,
-        aad,
-        &mut contiguous_buffer[..total_len],
-    )
-    .map_err(|_| internal_error("AEAD integrity failure"))?;
+    // Reconstruct the suffixed buffer for ring's API
+    let mut buffer = ciphertext.to_vec();
+    buffer.extend_from_slice(auth_tag);
 
-    // Copy back the verified plaintext to the original slice
+    let plaintext = decryption_key
+        .open_in_place(nonce, aad, &mut buffer)
+        .map_err(|_| internal_error("AEAD integrity failure"))?;
+
     ciphertext.copy_from_slice(plaintext);
 
     Ok(())
@@ -106,18 +108,16 @@ pub fn decrypt_frame_payload(
 #[cfg(test)]
 mod tests {
     use zerocopy::big_endian::{U32, U64};
-
     use super::*;
     use crate::consts::VERSION;
 
     #[test]
-    fn test_cryptographic_roundtrip() {
+    fn test_cryptographic_roundtrip() -> Result<(), ShardError> {
         let master_psk = [0u8; 32];
         let mut payload = b"shard protocol test payload".to_vec();
         let original_payload = payload.clone();
 
-        let payload_len_u32 =
-            u32::try_from(payload.len()).unwrap_or_else(|_| panic!("Payload length exceeds u32"));
+        let payload_len = u32::try_from(payload.len()).map_err(|_| ShardError::CryptoError)?;
 
         let mut header = ShardHeader {
             version: VERSION,
@@ -125,22 +125,51 @@ mod tests {
             sequence_id: U64::new(1),
             timestamp: U64::new(0),
             nonce: [0u8; 12],
-            payload_len: U32::new(payload_len_u32),
+            payload_len: U32::new(payload_len),
         };
 
         // Encrypt
-        let tag = encrypt_frame_payload(&master_psk, &mut header, &mut payload)
-            .unwrap_or_else(|_| panic!("Encryption failed"));
+        let tag = encrypt_frame_payload(&master_psk, &mut header, &mut payload)?;
 
         assert_ne!(payload, original_payload, "Payload must be encrypted");
 
         // Decrypt
-        decrypt_frame_payload(&master_psk, &header, &mut payload, &tag)
-            .unwrap_or_else(|_| panic!("Decryption failed"));
+        decrypt_frame_payload(&master_psk, &header, &mut payload, &tag)?;
 
         assert_eq!(
             payload, original_payload,
             "Decrypted payload must match original"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_aad_tamper_detection() -> Result<(), ShardError> {
+        use zerocopy::big_endian::{U32, U64};
+        use crate::consts::VERSION;
+
+        let master_psk = [0u8; 32];
+        let mut payload = b"sensitive data".to_vec();
+        
+        let mut header = ShardHeader {
+            version: VERSION,
+            frame_type: 0,
+            sequence_id: U64::new(100),
+            timestamp: U64::new(0),
+            nonce: [0u8; 12],
+            payload_len: U32::new(payload.len() as u32),
+        };
+
+        // Encrypt with Sequence ID 100
+        let tag = encrypt_frame_payload(&master_psk, &mut header, &mut payload)?;
+
+        // ATTACK: Modify Sequence ID in the header after encryption (MITM)
+        header.sequence_id = U64::new(101);
+
+        // Decrypt must fail because AEAD includes the header as AAD
+        let result = decrypt_frame_payload(&master_psk, &header, &mut payload, &tag);
+        
+        assert!(result.is_err(), "Decryption should fail when header is tampered");
+        Ok(())
     }
 }
