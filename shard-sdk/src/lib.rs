@@ -5,7 +5,7 @@
 
 #![deny(clippy::all, clippy::pedantic, missing_docs)]
 
-// pub mod client;
+pub mod client;
 pub mod config;
 pub mod server;
 // pub mod session;
