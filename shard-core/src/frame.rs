@@ -64,9 +64,9 @@ impl<'a> ShardFrame<'a> {
     /// Returns `ShardError::InvalidVersion` if the version field is not 0x01.
     /// Returns `ShardError::InvalidPayloadLength` if the payload length exceeds the hard cap.
     pub fn from_bytes(buffer: &'a [u8]) -> Result<Self, ShardError> {
-        let internal_error = |_e: &str| {
+        let internal_error = |e: &str| {
             #[cfg(debug_assertions)]
-            println!("[DEBUG] Frame drop reason: {_e}");
+            println!("[DEBUG] Frame drop reason: {e}");
             ShardError::InvalidFrame
         };
         if buffer.len() < HEADER_SIZE + AUTH_TAG_SIZE {

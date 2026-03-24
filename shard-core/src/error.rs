@@ -45,13 +45,16 @@ pub enum ShardError {
 
 impl ShardError {
     /// Returns the corresponding 1-byte error code as per SPEC Section 5.
-    pub fn to_code(&self) -> u8 {
+    #[must_use]
+    pub const fn to_code(&self) -> u8 {
         match self {
             Self::InvalidSequence | Self::TimestampOutOfWindow => 0x02,
             Self::CryptoError => 0x03,
             Self::PayloadTooLarge(_) => 0x06,
-            Self::InvalidVersion { .. } | Self::InvalidFrame => 0x05,
-            Self::InvalidPayloadLength | Self::BufferTooSmall => 0x05,
+            Self::InvalidVersion { .. }
+            | Self::InvalidFrame
+            | Self::InvalidPayloadLength
+            | Self::BufferTooSmall => 0x05,
         }
     }
 }

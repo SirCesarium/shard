@@ -1,5 +1,5 @@
 //! Implementation for the keygen command.
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use rand::Rng;
 
 /// Generates a new cryptographically secure 32-byte key and prints it in Base64.

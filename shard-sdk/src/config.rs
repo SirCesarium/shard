@@ -28,7 +28,7 @@ impl ShardConfig {
 
     /// Sets a custom starting sequence ID for this configuration.
     #[must_use]
-    pub fn with_sequence_id(mut self, sequence_id: u64) -> Self {
+    pub const fn with_sequence_id(mut self, sequence_id: u64) -> Self {
         self.initial_sequence_id = sequence_id;
         self
     }

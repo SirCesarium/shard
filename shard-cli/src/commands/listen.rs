@@ -1,7 +1,7 @@
 //! Implementation of the listen command for Shard CLI.
 use crate::state::SessionState;
-use base64::{engine::general_purpose, Engine as _};
-use miette::{miette, IntoDiagnostic, Result};
+use base64::{Engine as _, engine::general_purpose};
+use miette::{IntoDiagnostic, Result, miette};
 use shard_sdk::config::ShardConfig;
 use shard_sdk::server::ShardServer;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -17,7 +17,9 @@ pub async fn exec(port: u16, key: Option<String>) -> Result<()> {
     let raw_key = key
         .or_else(|| std::env::var("SHARD_KEY").ok())
         .or_else(|| SessionState::load().map(|s| s.master_psk))
-        .ok_or_else(|| miette!("No Master PSK found. Use --key, set SHARD_KEY, or start a session."))?;
+        .ok_or_else(|| {
+            miette!("No Master PSK found. Use --key, set SHARD_KEY, or start a session.")
+        })?;
 
     // 2. Decode Key
     let mut master_psk = [0u8; 32];

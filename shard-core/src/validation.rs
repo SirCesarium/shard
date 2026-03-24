@@ -24,9 +24,9 @@ impl Validator {
     /// - `ShardError::InvalidSequence`: If `SEQUENCE_ID` <= `LAST_SEQ`.
     /// - `ShardError::TimestampOutOfWindow`: If drift > 5000ms.
     pub fn check_and_update(&self, sequence_id: u64, timestamp: u64) -> Result<(), ShardError> {
-        let internal_error = |_e: &str| {
+        let internal_error = |e: &str| {
             #[cfg(debug_assertions)]
-            println!("[DEBUG] Validation drop: {_e}");
+            println!("[DEBUG] Validation drop: {e}");
             ShardError::InvalidFrame
         };
 
@@ -142,7 +142,7 @@ mod tests {
     }
 
     #[test]
-    fn test_concurrent_sequence_updates() {
+    fn test_concurrent_sequence_updates() -> Result<(), String> {
         use std::sync::Arc;
         use std::thread;
 
@@ -153,21 +153,26 @@ mod tests {
             let v = Arc::clone(&validator);
             let h = thread::spawn(move || {
                 // Each thread tries to update to its own index
-                // Some will succeed, some will fail depending on timing
                 let _ = v.check_and_update(i, current_ts());
             });
             handles.push(h);
         }
 
         for h in handles {
-            h.join().unwrap();
+            h.join().map_err(|_| "Thread panicked".to_string())?;
         }
 
         // After all threads, the last_seq must be at most 100
         // (Since they all sent unique IDs 1-100)
-        assert!(validator.last_seq.load(Ordering::SeqCst) <= 100);
-        // And it should be at least some value if any thread succeeded
-        assert!(validator.last_seq.load(Ordering::SeqCst) > 0);
+        if validator.last_seq.load(Ordering::SeqCst) > 100 {
+            return Err("Sequence exceeded maximum expected value".to_string());
+        }
+
+        if validator.last_seq.load(Ordering::SeqCst) == 0 {
+            return Err("No sequence updates were recorded".to_string());
+        }
+
+        Ok(())
     }
 
     fn current_ts() -> u64 {
