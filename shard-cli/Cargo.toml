@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "shard"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1.0.102"
 base64 = "0.22.1"

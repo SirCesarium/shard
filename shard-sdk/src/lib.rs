@@ -11,6 +11,9 @@ pub mod server;
 pub mod session;
 pub mod util;
 
+/// Foreign Function Interface (FFI) for C and Java (Project Panama).
+pub mod ffi;
+
 pub use crate::config::ShardConfig;
 /// Re-exporting core errors for easier access.
 pub use shard_core::ShardError;

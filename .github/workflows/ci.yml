@@ -1,15 +1,32 @@
 name: CI
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   check:
+    name: Check & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Cargo Format
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain-action@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check formatting
         run: cargo fmt --all -- --check
-      - name: Cargo Clippy
+
+      - name: Clippy
         run: cargo clippy --workspace -- -D warnings
-      - name: Cargo Test
+
+      - name: Test
         run: cargo test --workspace
