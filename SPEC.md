@@ -1,4 +1,4 @@
-# Shard Protocol Specification (v1.0)
+# Shard Protocol Specification (v1.1)
 
 **Shard** is a high-performance, hardened application-layer protocol for secure, low-latency binary data transport over UDP. It is designed for zero-trust environments where minimal overhead, resistance to fragmentation, and cryptographic integrity are mandatory.
 
@@ -31,21 +31,24 @@ The Shard packet is a strictly ordered binary stream. **Network Byte Order (Big 
 ### 2.2 Key Derivation & Rotation (KDR)
 To prevent long-term Master Key exposure:
 - **Master PSK:** 32-byte Pre-Shared Key.
-- **Session Key:** Generated via **HKDF-SHA256** using the `Master PSK` as input and the `SEQUENCE_ID` + `VERSION` as the salt.
-- **Key Exhaustion:** Upon reaching the maximum value of `SEQUENCE_ID` ($2^{64}-1$), the counter **MUST NOT** wrap around. The Master PSK must be rotated manually and the counter reset.
+- **Session Key:** Generated via **HKDF-SHA256** using the `Master PSK` as input.
+- **Salt:** A strictly defined 9-byte array: `SEQUENCE_ID` (8 bytes, Big Endian) followed by `VERSION` (1 byte).
+- **Key Exhaustion:** Upon reaching the maximum value of `SEQUENCE_ID` ($2^{64}-1$), the counter **MUST NOT** wrap around. The session MUST be terminated and the Master PSK rotated.
 
 ### 2.3 Integrity & MTU Compliance
 - **Anti-Fragmentation:** To ensure atomic delivery, `PAYLOAD_LEN` is hard-capped at **1024 bytes**. Total frame size stays within the 1280-byte safe MTU.
-- **Silent Drop Policy:** If `AUTH_TAG` verification fails, the receiver **MUST** drop the packet silently. No error frame shall be sent for authentication failures to prevent side-channel analysis and port scanning.
+- **Silent Drop Policy:** If `AUTH_TAG` verification fails, the receiver **MUST** drop the packet silently. This specific failure MUST NOT trigger an error frame to prevent side-channel analysis. Other protocol-level errors (e.g., version mismatch) MAY return an error frame.
 
 ---
 
-## 3. Anti-Replay & State Control
+### 3. Anti-Replay & State Control
 
 ### 3.1 Sequence Validation
 Both endpoints must maintain a local `LAST_SEQ` counter. 
 - Incoming packets with a `SEQUENCE_ID` $\le$ `LAST_SEQ` **MUST** be discarded.
 - Upon successful authentication, `LAST_SEQ` is updated to the current `SEQUENCE_ID`.
+- **Note on Statelessness:** A client MAY initialize its starting `SEQUENCE_ID` using high-precision Unix timestamps (nanoseconds) to ensure monotonicity across restarts without persistent state.
+
 
 ### 3.2 Temporal Windowing
 - The `TIMESTAMP` must be within a $\pm$ 5000ms window of the server's clock. Packets outside this drift window are rejected to mitigate long-term replay attempts.
