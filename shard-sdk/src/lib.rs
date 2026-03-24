@@ -1,26 +1,16 @@
-//! Shard SDK
+//! Shard SDK: High-performance, hardened binary transport over UDP.
 //!
-//! High-level software development kit for integrating Shard into applications.
+//! This crate provides the asynchronous implementation of the Shard protocol,
+//! leveraging Tokio for non-blocking I/O and shard-core for cryptographic integrity.
 
-/// Adds two integers.
-///
-/// # Examples
-/// ```
-/// let result = shard_sdk::add(1, 2);
-/// assert_eq!(result, 3);
-/// ```
-#[must_use]
-pub const fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+#![deny(clippy::all, clippy::pedantic, missing_docs)]
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// pub mod client;
+pub mod config;
+pub mod server;
+// pub mod session;
+// pub mod util;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+/// Re-exporting core errors for easier access.
+pub use shard_core::ShardError;
+pub use crate::config::ShardConfig;
