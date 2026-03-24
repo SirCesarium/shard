@@ -68,9 +68,9 @@ pub fn decrypt_frame_payload(
     ciphertext: &mut [u8],
     auth_tag: &[u8; 16],
 ) -> Result<(), ShardError> {
-    let internal_error = |e: &str| {
+    let internal_error = |_e: &str| {
         #[cfg(debug_assertions)]
-        println!("[DEBUG] Decryption drop: {e}");
+        println!("[DEBUG] Decryption drop: {_e}");
         ShardError::CryptoError
     };
 
