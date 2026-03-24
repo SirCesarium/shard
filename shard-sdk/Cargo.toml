@@ -6,6 +6,7 @@ authors.workspace = true
 license.workspace = true
 description.workspace = true
 repository.workspace = true
+readme.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -13,7 +14,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 futures-util = "0.3.32"
 rand = "0.10.0"
-shard-core = { version = "0.1.0", path = "../shard-core" }
+shard-core = { version = "0.1.1", path = "../shard-core" }
 thiserror = "2.0.18"
 tokio = { version = "1.50.0", features = ["full"] }
 zerocopy = "0.8.47"

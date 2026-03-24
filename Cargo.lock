@@ -946,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "shard-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -961,7 +961,7 @@ dependencies = [
 
 [[package]]
 name = "shard-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "byteorder",
  "criterion",
@@ -973,7 +973,7 @@ dependencies = [
 
 [[package]]
 name = "shard-sdk"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures-util",
  "rand",
