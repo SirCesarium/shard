@@ -27,11 +27,24 @@ impl ShardClient {
         let socket = UdpSocket::bind("0.0.0.0:0").await?;
         socket.connect(config.remote_addr).await?;
 
+        // Truly stateless: use current Unix nanoseconds as starting sequence.
+        // This ensures monotonicity across client restarts without disk persistence.
+        let initial_seq = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| u64::try_from(d.as_nanos()).unwrap_or(1))
+            .unwrap_or(1);
+
         Ok(Self {
+            sequence_id: AtomicU64::new(initial_seq),
             config: Arc::new(config),
             socket: Arc::new(socket),
-            sequence_id: AtomicU64::new(1),
         })
+    }
+
+    /// Returns the current (next) sequence ID for this client.
+    #[must_use]
+    pub fn current_sequence(&self) -> u64 {
+        self.sequence_id.load(Ordering::Relaxed)
     }
 
     /// Encrypts and sends a payload to the server.
@@ -43,6 +56,13 @@ impl ShardClient {
     /// Returns `ShardError` if encryption fails or `std::io::Error` on network failure.
     pub async fn send(&self, payload: &[u8]) -> Result<(), crate::ShardError> {
         let seq = self.sequence_id.fetch_add(1, Ordering::SeqCst);
+
+        // Section 2.2: Key Exhaustion protection.
+        // We must not allow the sequence ID to wrap around to 0.
+        if seq == u64::MAX {
+            return Err(crate::ShardError::InvalidSequence);
+        }
+
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| u64::try_from(d.as_millis()).unwrap_or(0))

@@ -10,6 +10,8 @@ pub struct ShardConfig {
     pub remote_addr: SocketAddr,
     /// Maximum allowed clock drift for timestamp validation (milliseconds).
     pub drift_window_ms: u64,
+    /// The starting sequence ID for a new session.
+    pub initial_sequence_id: u64,
 }
 
 impl ShardConfig {
@@ -20,6 +22,14 @@ impl ShardConfig {
             master_psk,
             remote_addr,
             drift_window_ms: 5000,
+            initial_sequence_id: 1,
         }
+    }
+
+    /// Sets a custom starting sequence ID for this configuration.
+    #[must_use]
+    pub fn with_sequence_id(mut self, sequence_id: u64) -> Self {
+        self.initial_sequence_id = sequence_id;
+        self
     }
 }

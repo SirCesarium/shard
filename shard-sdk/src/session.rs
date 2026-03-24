@@ -28,6 +28,12 @@ impl ShardSession {
         self.inner.send(data).await
     }
 
+    /// Returns the current (next) sequence ID for this session.
+    #[must_use]
+    pub fn current_sequence(&self) -> u64 {
+        self.inner.current_sequence()
+    }
+
     /// Returns the remote address this client is connected to.
     #[must_use]
     pub fn remote_addr(&self) -> std::net::SocketAddr {

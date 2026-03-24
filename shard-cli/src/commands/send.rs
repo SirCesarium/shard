@@ -7,11 +7,6 @@ use shard_sdk::session::ShardSession;
 use std::net::SocketAddr;
 
 /// Executes the send command.
-///
-/// Resolves the configuration in the following order:
-/// 1. Explicit CLI arguments.
-/// 2. Environment variables (`SHARD_KEY`).
-/// 3. Active session state.
 pub async fn exec(message: String, to: Option<SocketAddr>, key: Option<String>) -> Result<()> {
     // 1. Resolve Key
     let raw_key = key
@@ -39,6 +34,7 @@ pub async fn exec(message: String, to: Option<SocketAddr>, key: Option<String>) 
     master_psk.copy_from_slice(&decoded);
 
     // 4. Initialize SDK Session and Send
+    // ShardConfig now defaults to using nanosecond-based sequence ID generation.
     let config = ShardConfig::new(master_psk, addr);
     let session = ShardSession::new(config).await.into_diagnostic()?;
 
