@@ -671,6 +671,7 @@ name = "shard-core"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "rand",
  "ring",
  "thiserror",
  "zerocopy",
@@ -681,6 +682,7 @@ name = "shard-sdk"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "rand",
  "shard-core",
  "thiserror",
  "tokio",

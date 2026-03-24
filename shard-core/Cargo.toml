@@ -10,3 +10,6 @@ byteorder = "1.5.0"
 ring = "0.17.14"
 zerocopy = { version = "0.8.47", features = ["derive"] }
 thiserror = { version = "*", features = []}
+
+[dev-dependencies]
+rand = "0.10.0"

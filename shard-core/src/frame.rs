@@ -106,6 +106,8 @@ impl<'a> ShardFrame<'a> {
 
 #[cfg(test)]
 mod tests {
+    use rand::Rng;
+
     use super::*;
 
     #[test]
@@ -115,12 +117,16 @@ mod tests {
 
         let master_psk = [0u8; 32];
         let mut payload = b"hello".to_vec();
+
+        let mut nonce = [0u8; 12];
+        rand::rng().fill_bytes(&mut nonce);
+
         let mut header = ShardHeader {
             version: VERSION,
             frame_type: 0,
             sequence_id: U64::new(1),
             timestamp: U64::new(0),
-            nonce: [0u8; 12],
+            nonce,
             payload_len: U32::new(5),
         };
 
