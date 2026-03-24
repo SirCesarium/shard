@@ -29,4 +29,12 @@ pub enum ShardError {
     /// Timestamp is outside the allowed drift window (Section 3.2).
     #[error("Timestamp drift too high")]
     TimestampOutOfWindow,
+
+    /// Payload exceeds the 1024-byte limit defined for MTU compliance (Section 2.3).
+    #[error("Payload exceeds the maximum allowed size: {0} bytes")]
+    PayloadTooLarge(usize),
+
+    /// The payload length field in the header is invalid or inconsistent.
+    #[error("Invalid payload length in header")]
+    InvalidPayloadLength,
 }

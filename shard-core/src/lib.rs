@@ -9,6 +9,7 @@ pub mod error;
 pub mod types;
 pub mod frame;
 pub mod crypto;
+pub mod validation;
 
 pub use crate::error::ShardError;
 pub use crate::types::{FrameType, ProtocolError};

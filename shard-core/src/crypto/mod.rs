@@ -6,9 +6,11 @@
 pub mod aead;
 pub mod hkdf;
 
-use crate::error::ShardError;
 use crate::frame::ShardHeader;
+use crate::{consts::MAX_PAYLOAD_SIZE, error::ShardError};
+use ring::rand::{SecureRandom, SystemRandom};
 use zerocopy::IntoBytes;
+use zerocopy::big_endian::U32;
 
 /// Encrypts a plaintext payload using the Shard cryptographic stack.
 ///
@@ -21,11 +23,28 @@ use zerocopy::IntoBytes;
 /// Returns `ShardError::CryptoError` if key derivation or encryption fails.
 pub fn encrypt_frame_payload(
     master_psk: &[u8; 32],
-    header: &ShardHeader,
+    header: &mut ShardHeader,
     payload: &mut [u8],
 ) -> Result<[u8; 16], ShardError> {
-    let sequence_id = u64::from_be_bytes(header.sequence_id);
-    let session_key = hkdf::derive_session_key(master_psk, sequence_id)?;
+    if payload.len() > MAX_PAYLOAD_SIZE {
+        return Err(ShardError::PayloadTooLarge(payload.len()));
+    }
+
+    let actual_len = u32::try_from(payload.len()).map_err(|_| ShardError::CryptoError)?;
+
+    header.payload_len = U32::new(actual_len);
+
+    let sequence_id_raw = header.sequence_id.get();
+    let session_key = hkdf::derive_session_key(master_psk, sequence_id_raw)?;
+
+    let mut nonce = [0u8; 12];
+    nonce[0..8].copy_from_slice(header.sequence_id.as_bytes());
+
+    let rng = SystemRandom::new();
+    rng.fill(&mut nonce[8..12])
+        .map_err(|_| ShardError::CryptoError)?;
+
+    header.nonce = nonce;
 
     // The entire header is used as AAD (Offsets 0 to 33).
     let aad = header.as_bytes();
@@ -43,19 +62,38 @@ pub fn encrypt_frame_payload(
 pub fn decrypt_frame_payload(
     master_psk: &[u8; 32],
     header: &ShardHeader,
-    ciphertext: &mut Vec<u8>,
+    ciphertext: &mut [u8],
     auth_tag: &[u8; 16],
 ) -> Result<(), ShardError> {
-    let sequence_id = u64::from_be_bytes(header.sequence_id);
+    let payload_len = header.payload_len.get() as usize;
+    if ciphertext.len() != payload_len {
+        return Err(ShardError::CryptoError);
+    }
+
+    let sequence_id = header.sequence_id.get();
     let session_key = hkdf::derive_session_key(master_psk, sequence_id)?;
+
+    let mut contiguous_buffer = [0u8; MAX_PAYLOAD_SIZE + 16];
+    let total_len = payload_len + 16;
+
+    contiguous_buffer[..payload_len].copy_from_slice(ciphertext);
+    contiguous_buffer[payload_len..total_len].copy_from_slice(auth_tag);
 
     let aad = header.as_bytes();
 
-    aead::decrypt(&session_key, &header.nonce, aad, ciphertext, auth_tag)
+    // Decrypt in place within the temporary buffer
+    let plaintext = aead::decrypt(&session_key, &header.nonce, aad, &mut contiguous_buffer[..total_len])?;
+
+    // Copy back the verified plaintext to the original slice
+    ciphertext.copy_from_slice(plaintext);
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use zerocopy::big_endian::{U32, U64};
+
     use super::*;
     use crate::consts::VERSION;
 
@@ -68,17 +106,17 @@ mod tests {
         let payload_len_u32 =
             u32::try_from(payload.len()).unwrap_or_else(|_| panic!("Payload length exceeds u32"));
 
-        let header = ShardHeader {
+        let mut header = ShardHeader {
             version: VERSION,
             frame_type: 0,
-            sequence_id: 1u64.to_be_bytes(),
-            timestamp: 0u64.to_be_bytes(),
+            sequence_id: U64::new(1),
+            timestamp: U64::new(0),
             nonce: [0u8; 12],
-            payload_len: payload_len_u32.to_be_bytes(),
+            payload_len: U32::new(payload_len_u32),
         };
 
         // Encrypt
-        let tag = encrypt_frame_payload(&master_psk, &header, &mut payload)
+        let tag = encrypt_frame_payload(&master_psk, &mut header, &mut payload)
             .unwrap_or_else(|_| panic!("Encryption failed"));
 
         assert_ne!(payload, original_payload, "Payload must be encrypted");

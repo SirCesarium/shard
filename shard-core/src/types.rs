@@ -14,18 +14,19 @@ pub enum FrameType {
 
 /// Error codes for Error frames as defined in Section 5.
 ///
-/// Note: 0x01 (`AUTH_FAILURE`) is omitted as it must be dropped silently.
+/// IMPORTANT: Section 2.3 mandates SILENT DROP for:
+/// - Version mismatch
+/// - Timestamp drift
+/// - Sequence replay
+/// - AEAD Authentication failure
+/// - `No ProtocolError` codes exist for these to prevent side-channel leaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ProtocolError {
-    /// Replay detected (0x02).
-    ReplayDetected = 0x02,
-    /// Decryption failed (0x03).
-    DecryptionFailed = 0x03,
+    /// Generic execution error after successful decryption (0x01).
+    ExecutionError = 0x01,
     /// Execution timeout (0x04).
     ExecutionTimeout = 0x04,
-    /// Malformed frame (0x05).
-    MalformedFrame = 0x05,
-    /// Payload too large (0x06).
-    PayloadTooLarge = 0x06,
+    /// The actual operation requested failed (0x07).
+    ProcessingFailed = 0x07,
 }
