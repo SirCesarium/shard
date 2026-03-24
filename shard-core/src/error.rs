@@ -5,8 +5,12 @@ use thiserror::Error;
 /// Errors that can occur during frame processing or crypto operations.
 #[derive(Debug, Error)]
 pub enum ShardError {
+    /// Invalid frame error.
+    #[error("Invalid Frame")]
+    InvalidFrame,
+
     /// Provided buffer is smaller than the required 34 bytes.
-    #[error("Buffer too small to contain a header")]
+    #[error("Internal: Buffer too small")]
     BufferTooSmall,
 
     /// Cryptographic failure (Section 2.1 and 2.2).

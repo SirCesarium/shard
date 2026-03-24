@@ -45,52 +45,55 @@ impl<'a> ShardFrame<'a> {
     /// Returns `ShardError::InvalidVersion` if the version field is not 0x01.
     /// Returns `ShardError::InvalidPayloadLength` if the payload length exceeds the hard cap.
     pub fn from_bytes(buffer: &'a [u8]) -> Result<Self, ShardError> {
+        let internal_error = |e: &str| {
+            #[cfg(debug_assertions)]
+            println!("[DEBUG] Frame drop reason: {e}");
+            ShardError::InvalidFrame
+        };
+
         if buffer.len() < HEADER_SIZE + AUTH_TAG_SIZE {
-            return Err(ShardError::BufferTooSmall);
+            return Err(internal_error("Buffer too small"));
         }
 
         // Parse header using zero-copy.
         let header_bytes = buffer
             .get(0..HEADER_SIZE)
-            .ok_or(ShardError::BufferTooSmall)?;
-        let header =
-            ShardHeader::read_from_bytes(header_bytes).map_err(|_| ShardError::BufferTooSmall)?;
+            .ok_or_else(|| internal_error("Buffer too small"))?;
+        let header = ShardHeader::read_from_bytes(header_bytes)
+            .map_err(|_| internal_error("Buffer too small"))?;
 
         // Validate version (Section 1).
         if header.version != VERSION {
-            return Err(ShardError::InvalidVersion {
-                expected: VERSION,
-                found: header.version,
-            });
+            return Err(internal_error("Version mismatch"));
         }
 
         // Parse and validate payload length (Section 2.3).
         let payload_len_raw = header.payload_len.get();
-        let payload_len =
-            usize::try_from(payload_len_raw).map_err(|_| ShardError::InvalidPayloadLength)?;
+        let payload_len = usize::try_from(payload_len_raw)
+            .map_err(|_| internal_error("Invalid payload length"))?;
 
         if payload_len > MAX_PAYLOAD_SIZE {
-            return Err(ShardError::PayloadTooLarge(payload_len));
+            return Err(internal_error("Payload too large"));
         }
 
         let total_expected_size = HEADER_SIZE
             .checked_add(payload_len)
             .and_then(|sum| sum.checked_add(AUTH_TAG_SIZE))
-            .ok_or(ShardError::BufferTooSmall)?;
+            .ok_or_else(|| internal_error("Buffer too small"))?;
         if buffer.len() < total_expected_size {
-            return Err(ShardError::BufferTooSmall);
+            return Err(internal_error("Buffer too small"));
         }
 
         // Safety: total_expected_size is validated against buffer.len()
         let ciphertext = buffer
             .get(HEADER_SIZE..HEADER_SIZE + payload_len)
-            .ok_or(ShardError::BufferTooSmall)?;
+            .ok_or_else(|| internal_error("Buffer too small"))?;
 
         let mut auth_tag = [0u8; AUTH_TAG_SIZE];
         let tag_start = total_expected_size - AUTH_TAG_SIZE;
         let tag_slice = buffer
             .get(tag_start..total_expected_size)
-            .ok_or(ShardError::BufferTooSmall)?;
+            .ok_or_else(|| internal_error("Buffer too small"))?;
         auth_tag.copy_from_slice(tag_slice);
 
         Ok(Self {
@@ -141,7 +144,7 @@ mod tests {
     fn test_buffer_too_small() {
         let buffer = vec![0u8; 33];
         let result = ShardFrame::from_bytes(&buffer);
-        assert!(matches!(result, Err(ShardError::BufferTooSmall)));
+        assert!(matches!(result, Err(ShardError::InvalidFrame)));
     }
 
     #[test]
@@ -149,7 +152,7 @@ mod tests {
         let mut buffer = vec![0u8; 50];
         buffer[0] = 0x02;
         let result = ShardFrame::from_bytes(&buffer);
-        assert!(matches!(result, Err(ShardError::InvalidVersion { .. })));
+        assert!(matches!(result, Err(ShardError::InvalidFrame)));
     }
 
     #[test]
@@ -160,6 +163,6 @@ mod tests {
         buffer[30..34].copy_from_slice(&overflow_len.to_be_bytes());
 
         let result = ShardFrame::from_bytes(&buffer);
-        assert!(matches!(result, Err(ShardError::PayloadTooLarge(_))));
+        assert!(matches!(result, Err(ShardError::InvalidFrame)));
     }
 }

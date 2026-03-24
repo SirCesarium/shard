@@ -65,13 +65,20 @@ pub fn decrypt_frame_payload(
     ciphertext: &mut [u8],
     auth_tag: &[u8; 16],
 ) -> Result<(), ShardError> {
+    let internal_error = |e: &str| {
+        #[cfg(debug_assertions)]
+        println!("[DEBUG] Decryption drop: {e}");
+        ShardError::InvalidFrame
+    };
+
     let payload_len = header.payload_len.get() as usize;
     if ciphertext.len() != payload_len {
-        return Err(ShardError::CryptoError);
+        return Err(internal_error("Ciphertext length mismatch"));
     }
 
     let sequence_id = header.sequence_id.get();
-    let session_key = hkdf::derive_session_key(master_psk, sequence_id)?;
+    let session_key = hkdf::derive_session_key(master_psk, sequence_id)
+        .map_err(|_| internal_error("Key derivation failed"))?;
 
     let mut contiguous_buffer = [0u8; MAX_PAYLOAD_SIZE + 16];
     let total_len = payload_len + 16;
@@ -87,7 +94,8 @@ pub fn decrypt_frame_payload(
         &header.nonce,
         aad,
         &mut contiguous_buffer[..total_len],
-    )?;
+    )
+    .map_err(|_| internal_error("AEAD integrity failure"))?;
 
     // Copy back the verified plaintext to the original slice
     ciphertext.copy_from_slice(plaintext);

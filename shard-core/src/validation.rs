@@ -24,24 +24,30 @@ impl Validator {
     /// - `ShardError::InvalidSequence`: If `SEQUENCE_ID` <= `LAST_SEQ`.
     /// - `ShardError::TimestampOutOfWindow`: If drift > 5000ms.
     pub fn check_and_update(&self, sequence_id: u64, timestamp: u64) -> Result<(), ShardError> {
+        let internal_error = |e: &str| {
+            #[cfg(debug_assertions)]
+            println!("[DEBUG] Validation drop: {e}");
+            ShardError::InvalidFrame
+        };
+
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| u64::try_from(d.as_millis()))
-            .map_err(|_| ShardError::TimestampOutOfWindow)?
-            .map_err(|_| ShardError::TimestampOutOfWindow)?;
+            .map_err(|_| internal_error("Clock error"))?
+            .map_err(|_| internal_error("Clock overflow"))?;
 
         // 1. Temporal Windowing (Section 3.2)
         // If the drift is too high, we drop silently via ShardError.
         let drift = now_ms.abs_diff(timestamp);
         if drift > MAX_TIMESTAMP_DRIFT_MS {
-            return Err(ShardError::TimestampOutOfWindow);
+            return Err(internal_error("Timestamp drift too high"));
         }
 
         // 2. Atomic Sequence Validation and Commit (Section 3.1)
         let mut current = self.last_seq.load(Ordering::Relaxed);
         loop {
             if sequence_id <= current {
-                return Err(ShardError::InvalidSequence);
+                return Err(internal_error("Sequence ID replay or regression"));
             }
 
             match self.last_seq.compare_exchange_weak(
@@ -77,13 +83,13 @@ mod tests {
         // Sequence 10 again should fail (Replay).
         assert!(matches!(
             validator.check_and_update(10, current_ts()),
-            Err(ShardError::InvalidSequence)
+            Err(ShardError::InvalidFrame)
         ));
 
         // Sequence 5 (old) should fail.
         assert!(matches!(
             validator.check_and_update(5, current_ts()),
-            Err(ShardError::InvalidSequence)
+            Err(ShardError::InvalidFrame)
         ));
 
         // Sequence 11 is valid.
@@ -104,13 +110,13 @@ mod tests {
         // 5100ms in the past is invalid.
         assert!(matches!(
             validator.check_and_update(3, now - 5100),
-            Err(ShardError::TimestampOutOfWindow)
+            Err(ShardError::InvalidFrame)
         ));
 
         // 5100ms in the future is invalid.
         assert!(matches!(
             validator.check_and_update(4, now + 5100),
-            Err(ShardError::TimestampOutOfWindow)
+            Err(ShardError::InvalidFrame)
         ));
     }
 

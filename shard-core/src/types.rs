@@ -13,20 +13,20 @@ pub enum FrameType {
 }
 
 /// Error codes for Error frames as defined in Section 5.
-///
-/// IMPORTANT: Section 2.3 mandates SILENT DROP for:
-/// - Version mismatch
-/// - Timestamp drift
-/// - Sequence replay
-/// - AEAD Authentication failure
-/// - `No ProtocolError` codes exist for these to prevent side-channel leaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ProtocolError {
-    /// Generic execution error after successful decryption (0x01).
-    ExecutionError = 0x01,
-    /// Execution timeout (0x04).
+    /// `AUTH_FAILURE` (0x01).
+    /// INTERNAL USE ONLY. Do not transmit over the network per Section 2.3 (Silent Drop).
+    AuthFailure = 0x01,
+    /// `REPLAY_DETECTED` (0x02). Sequence ID or Timestamp violation.
+    ReplayDetected = 0x02,
+    /// `DECRYPTION_FAILED` (0x03). Internal cryptographic error.
+    DecryptionFailed = 0x03,
+    /// `EXECUTION_TIMEOUT` (0x04). Payload processing exceeded deadline.
     ExecutionTimeout = 0x04,
-    /// The actual operation requested failed (0x07).
-    ProcessingFailed = 0x07,
+    /// `MALFORMED_FRAME` (0x05). Length mismatch or invalid version.
+    MalformedFrame = 0x05,
+    /// `PAYLOAD_TOO_LARGE` (0x06). Exceeds the 1024-byte limit.
+    PayloadTooLarge = 0x06,
 }
