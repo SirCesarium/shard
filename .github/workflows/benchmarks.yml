@@ -7,18 +7,23 @@ on:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+
       - name: Run benchmarks
-        run: cargo bench -p shard-core -- --save-baseline main
+        run: cargo bench -p shard-core --bench protocol -- --format json | tee benchmark_result.json
 
       - name: Store benchmark results
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: Shard Protocol Benchmarks
-          tool: 'criterion'
-          output-file-path: target/criterion/report/index.html
+          tool: 'cargo'
+          output-file-path: benchmark_result.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          benchmark-data-dir-path: 'target/criterion'
           auto-push: true
+          comment-on-alert: true
+          alert-threshold: "200%"
+          fail-on-alert: true
