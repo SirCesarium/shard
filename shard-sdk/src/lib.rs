@@ -8,9 +8,9 @@
 pub mod client;
 pub mod config;
 pub mod server;
-// pub mod session;
-// pub mod util;
+pub mod session;
+pub mod util;
 
+pub use crate::config::ShardConfig;
 /// Re-exporting core errors for easier access.
 pub use shard_core::ShardError;
-pub use crate::config::ShardConfig;

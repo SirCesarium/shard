@@ -35,15 +35,12 @@ impl ShardClient {
 
     /// Encrypts and sends a payload to the server.
     ///
-    /// This method automatically handles:
-    /// 1. Monotonic sequence ID generation.
-    /// 2. Current UTC timestamping.
-    /// 3. AEAD encryption with HKDF-derived session keys.
+    /// This method automatically handles monotonic sequence ID generation,
+    /// current UTC timestamping, and AEAD encryption.
     ///
     /// # Errors
     /// Returns `ShardError` if encryption fails or `std::io::Error` on network failure.
     pub async fn send(&self, payload: &[u8]) -> Result<(), crate::ShardError> {
-        // 1. Prepare Header Metadata
         let seq = self.sequence_id.fetch_add(1, Ordering::SeqCst);
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -55,27 +52,29 @@ impl ShardClient {
             frame_type: 0x00, // Request
             sequence_id: U64::new(seq),
             timestamp: U64::new(now),
-            nonce: [0u8; 12], // Will be filled by encrypt_frame_payload
-            payload_len: 0.into(), // Will be filled by encrypt_frame_payload
+            nonce: [0u8; 12],
+            payload_len: 0.into(),
         };
 
-        // 2. Encryption (In-place)
         let mut buffer = payload.to_vec();
-        let auth_tag = encrypt_frame_payload(
-            &self.config.master_psk,
-            &mut header,
-            &mut buffer
-        )?;
+        let auth_tag = encrypt_frame_payload(&self.config.master_psk, &mut header, &mut buffer)?;
 
-        // 3. Packet Assembly
         let mut packet = Vec::with_capacity(34 + buffer.len() + 16);
         packet.extend_from_slice(header.as_bytes());
         packet.extend_from_slice(&buffer);
         packet.extend_from_slice(&auth_tag);
 
-        // 4. Transmission
-        self.socket.send(&packet).await.map_err(|_| crate::ShardError::InvalidFrame)?;
+        self.socket
+            .send(&packet)
+            .await
+            .map_err(|_| crate::ShardError::InvalidFrame)?;
 
         Ok(())
+    }
+
+    /// Returns the remote address this client is connected to.
+    #[must_use]
+    pub fn remote_addr(&self) -> std::net::SocketAddr {
+        self.config.remote_addr
     }
 }
