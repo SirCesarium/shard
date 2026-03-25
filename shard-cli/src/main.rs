@@ -17,7 +17,12 @@ async fn main() -> Result<()> {
         Commands::Listen { port, key, drift } => {
             commands::listen::exec(port, key, drift).await?;
         }
-        Commands::Send { message, to, key, drift } => {
+        Commands::Send {
+            message,
+            to,
+            key,
+            drift,
+        } => {
             commands::send::exec(message, to, key, drift).await?;
         }
         Commands::Shell { to, key, drift } => {

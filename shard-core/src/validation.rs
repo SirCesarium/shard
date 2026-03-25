@@ -189,7 +189,7 @@ mod benches {
         let validator = Validator::new(MAX_TIMESTAMP_DRIFT_MS);
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
+            .map(|d| u64::try_from(d.as_millis()).unwrap_or(0))
             .unwrap_or(0);
         for i in 1..1000 {
             let _ = validator.check_and_update(i, now);

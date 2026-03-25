@@ -5,7 +5,12 @@ use shard_sdk::config::ShardConfig;
 use shard_sdk::session::ShardSession;
 
 /// Executes the send command.
-pub async fn exec(message: String, to: Option<String>, key: Option<String>, drift: u64) -> Result<()> {
+pub async fn exec(
+    message: String,
+    to: Option<String>,
+    key: Option<String>,
+    drift: u64,
+) -> Result<()> {
     let (master_psk, addr, addr_str) = resolve_target(to, key).await?;
 
     // 1. Initialize SDK Session (Handshake)
