@@ -1,7 +1,28 @@
-//! Shard SDK: High-performance, hardened binary transport over UDP.
+//! # Shard SDK
 //!
-//! This crate provides the asynchronous implementation of the Shard protocol,
-//! leveraging Tokio for non-blocking I/O and shard-core for cryptographic integrity.
+//! High-level asynchronous toolkit for the Shard 2.0 Protocol.
+//!
+//! This crate provides a robust, stateful implementation of the Shard protocol,
+//! handling X25519 handshakes, persistent sessions, and bi-directional encrypted communication.
+//!
+//! ## Core Components
+//! - [`ShardServer`]: A high-concurrency UDP server managing multiple stateful sessions.
+//! - [`ShardClient`]: A secure client that performs 1-RTT handshakes and maintains session state.
+//! - [`ShardSession`]: A convenience wrapper for established secure channels.
+//!
+//! ## Example: Basic Server
+//! ```rust,no_run
+//! use shard_sdk::server::ShardServer;
+//! use shard_sdk::config::ShardConfig;
+//!
+//! #[tokio::main]
+//! async fn main() -> tokio::io::Result<()> {
+//!     let config = ShardConfig::new([0u8; 32], "0.0.0.0:3000".parse().unwrap());
+//!     let server = ShardServer::bind(config).await?;
+//!     // server.listen(|payload, responder| { ... }).await?;
+//!     Ok(())
+//! }
+//! ```
 
 #![deny(clippy::all, clippy::pedantic, missing_docs)]
 

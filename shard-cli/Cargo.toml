@@ -19,7 +19,7 @@ clap = { version = "4.6.0", features = ["derive"] }
 miette = { version = "7.6.0", features = ["fancy"] }
 rand = "0.10.0"
 serde = { version = "1.0.228", features = ["derive"] }
-shard-sdk = { version = "0.2.0", path = "../shard-sdk" }
+shard-sdk = { version = "2.0.0", path = "../shard-sdk" }
 tokio = { version = "1.50.0", features = ["full"] }
 toml = "1.1.0"
 rustyline = "17.0.2"

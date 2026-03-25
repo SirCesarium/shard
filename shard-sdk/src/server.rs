@@ -41,7 +41,9 @@ impl ShardResponder {
         rand::fill(&mut nonce);
 
         let Ok(payload_len) = u32::try_from(payload.len()) else {
-            return Err(shard_core::error::ShardError::PayloadTooLarge(payload.len()));
+            return Err(shard_core::error::ShardError::PayloadTooLarge(
+                payload.len(),
+            ));
         };
 
         // Section 3.2 compliance: Use real timestamp for responses
@@ -235,10 +237,10 @@ impl ShardServer {
             return;
         };
 
-        let Ok(()) = session.validator.check_and_update(
-            frame.header.sequence_id.get(),
-            frame.header.timestamp.get(),
-        ) else {
+        let Ok(()) = session
+            .validator
+            .check_and_update(frame.header.sequence_id.get(), frame.header.timestamp.get())
+        else {
             return;
         };
 

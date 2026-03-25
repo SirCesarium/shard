@@ -1,74 +1,85 @@
 # Shard CLI
 
-The `shard` command-line tool is a management and testing utility for the Shard protocol ecosystem.
+The `shard` command-line interface is a versatile tool for managing, testing, and interacting with Shard 2.0 endpoints. It supports persistent session management, encrypted command delivery, and a bi-directional interactive shell.
 
 ## Installation
 
+### From Source
 ```bash
-cargo install shard-cli
+cargo install --path shard-cli
 ```
-*Binary name: `shard`*
+*Note: The installed binary name is `shard`.*
 
-## Sessions and Persistence
+## Command Reference
 
-Shard 2.0 CLI supports persistent, named sessions and **stateful handshakes**. Unlike simple UDP relays, every connection now performs an X25519 key exchange to establish a unique session key with **Perfect Forward Secrecy (PFS)**.
+### `shard keygen`
+Generates a cryptographically secure 32-byte Master Pre-Shared Key (PSK) encoded in Base64.
+- **Output:** A random string to be used as your shared secret.
 
-Sessions are stored in `~/.shard/config.toml` (or `%USERPROFILE%\.shard\config.toml` on Windows).
+### `shard listen`
+Starts a Shard 2.0 server to receive and respond to encrypted commands.
+- `--port, -p`: The UDP port to bind (default: random).
+- `--key, -k`: The Master PSK (Base64) or an `env:VAR` reference.
+- **Auto-Response:** In listen mode, the CLI will automatically acknowledge received text commands.
 
-### How it works (Shard 2.0):
-- **Handshake:** When you run `shard send`, the CLI first performs a 1-RTT handshake with the server.
-- **PFS:** Even if your Master PSK is compromised in the future, past captured traffic remains secure.
-- **DNS Support:** Domain names (e.g., `localhost:3000`) are resolved automatically.
-- **Absolute Replay Protection:** The stateful nature allows the server to reject any packet with a sequence ID lower or equal to the last one seen, with no time window limitations.
+### `shard send <MESSAGE>`
+Performs a 1-RTT handshake, sends a single encrypted message, and waits for a response.
+- `--to, -t`: Target address (`IP:PORT` or `domain:PORT`).
+- `--key, -k`: The Master PSK.
+- **Exit Code:** Returns 0 on success, non-zero on handshake or protocol error.
+
+### `shard shell`
+Opens an interactive stateful shell. Performs the X25519 handshake once and keeps the session alive.
+- `--to, -t`: Target address.
+- `--key, -k`: The Master PSK.
+- **Features:**
+    - Command history (Arrow Up/Down).
+    - In-place line editing.
+    - Real-time server response visualization.
 
 ---
 
-## Commands & Usage
+## Session Management
 
-### 1. Key Generation
-Generate a cryptographically secure 32-byte Master Pre-Shared Key (PSK) encoded in Base64.
+Shard allows you to save remote targets so you don't have to re-enter keys and addresses.
+
+### `shard session new <NAME>`
+Creates and activates a new named profile.
 ```bash
-shard keygen
+shard session new prod --to mc.example.com:3000 --key env:PROD_KEY
 ```
 
-### 2. Session Management
-Create and switch between multiple remote targets easily.
+### `shard session list`
+Displays all saved sessions and marks the currently active one.
 
-- **Create a new session (Secure):**
-  ```bash
-  export MY_PROD_KEY="AAAAA..."
-  shard session new prod-server --to example.com:3000 --key env:MY_PROD_KEY
-  ```
-- **List all sessions:**
-  ```bash
-  shard session list
-  ```
-- **Switch to a different session:**
-  ```bash
-  shard session use dev-server
-  ```
-- **Logout (clear active session):**
-  ```bash
-  shard logout
-  ```
+### `shard session use <NAME>`
+Switches the active session to the specified profile.
 
-### 3. Listening (Server Mode)
-Start a secure listener.
-```bash
-shard listen --port 3000
-```
+### `shard logout`
+Deactivates the current session without deleting your saved profiles.
 
-### 4. Sending (Client Mode)
-Send an encrypted command or payload.
-```bash
-shard send "system:status"
-```
-*You can always override the session by providing `--to` or `--key` explicitly.*
+---
 
-## Features
-- **Zero-Trust Defaults:** No response is sent unless the packet is fully authenticated.
-- **Hardened Security:** Implements ChaCha20-Poly1305 and HKDF key rotation per packet.
-- **Modern Aesthetics:** Rich CLI feedback powered by `miette` and `clap`.
+## Security Best Practices
+
+### Avoiding Plain-Text Keys
+Shard CLI encourages the use of environment variables to keep your Master PSK off the disk.
+1. `export SHARD_KEY="your-base64-key"`
+2. `shard session new dev --key env:SHARD_KEY`
+
+This stores only the string `"env:SHARD_KEY"` in your config file.
+
+### Configuration File Location
+- **Linux/macOS:** `~/.shard/config.toml`
+- **Windows:** `%USERPROFILE%\.shard\config.toml`
+
+The file is protected by standard OS file permissions.
+
+## Troubleshooting
+
+- **`Handshake Timed Out`**: Ensure the server is reachable and the UDP port is open in your firewall.
+- **`CryptoError`**: Ensure the Master PSK matches exactly on both the client and the server.
+- **`Timestamp Drift`**: Ensure your system clock is synchronized (max allowed drift: 5 seconds).
 
 ## License
 MIT License.
