@@ -38,10 +38,8 @@ pub fn compute_shared_secret(
 ) -> Result<Vec<u8>, ShardError> {
     let peer_public_key_unparsed = UnparsedPublicKey::new(&X25519, peer_public_key);
 
-    agreement::agree_ephemeral(
-        private_key,
-        &peer_public_key_unparsed,
-        |shared_secret| Ok(shared_secret.to_vec()),
-    )
+    agreement::agree_ephemeral(private_key, &peer_public_key_unparsed, |shared_secret| {
+        Ok(shared_secret.to_vec())
+    })
     .map_err(|_| ShardError::CryptoError)?
 }

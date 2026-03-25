@@ -3,24 +3,25 @@ use crate::client::ShardClient;
 use crate::config::ShardConfig;
 use std::sync::Arc;
 
-/// Represents an established secure session over UDP.
+/// Represents an established stateful secure session over UDP.
 pub struct ShardSession {
     inner: Arc<ShardClient>,
 }
 
 impl ShardSession {
-    /// Creates a new session from a configuration.
+    /// Creates a new stateful session from a configuration.
+    /// Performs an X25519 handshake to establish Perfect Forward Secrecy.
     ///
     /// # Errors
-    /// Returns `std::io::Error` if the underlying UDP socket cannot be initialized.
-    pub async fn new(config: ShardConfig) -> tokio::io::Result<Self> {
+    /// Returns an error if the handshake or socket initialization fails.
+    pub async fn new(config: ShardConfig) -> Result<Self, String> {
         let client = ShardClient::connect(config).await?;
         Ok(Self {
             inner: Arc::new(client),
         })
     }
 
-    /// Sends a secure message through the session.
+    /// Sends a secure message through the established stateful session.
     ///
     /// # Errors
     /// Returns `ShardError` if encryption or transmission fails.

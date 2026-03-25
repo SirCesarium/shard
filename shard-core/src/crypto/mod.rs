@@ -172,7 +172,7 @@ mod tests {
 
     #[test]
     fn test_x25519_handshake_derivation() -> Result<(), ShardError> {
-        use crate::crypto::agreement::{generate_ephemeral_keypair, compute_shared_secret};
+        use crate::crypto::agreement::{compute_shared_secret, generate_ephemeral_keypair};
         use crate::crypto::hkdf::derive_session_key_v2;
 
         let master_psk = [0u8; 32];
@@ -193,7 +193,7 @@ mod tests {
 
         // 5. Keys must match
         assert_eq!(client_session_key, server_session_key);
-        
+
         Ok(())
     }
 }

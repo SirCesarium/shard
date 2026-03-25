@@ -56,7 +56,9 @@ pub async fn exec(message: String, to: Option<String>, key: Option<String>) -> R
 
     // 5. Initialize SDK Session and Send
     let shard_config = ShardConfig::new(master_psk, addr);
-    let session = ShardSession::new(shard_config).await.into_diagnostic()?;
+    let session = ShardSession::new(shard_config)
+        .await
+        .map_err(|e| miette!("Handshake failed: {}", e))?;
 
     println!("Sending message to {addr} ({addr_str})...");
     session
