@@ -11,16 +11,15 @@ cargo install shard-cli
 
 ## Sessions and Persistence
 
-Shard CLI supports persistent, named sessions. Unlike simple environment variables, sessions are stored in `~/.shard/config.toml` (or `%USERPROFILE%\.shard\config.toml` on Windows) and remain available across terminal restarts and reboots.
+Shard 2.0 CLI supports persistent, named sessions and **stateful handshakes**. Unlike simple UDP relays, every connection now performs an X25519 key exchange to establish a unique session key with **Perfect Forward Secrecy (PFS)**.
 
-### Key Security and Environment Variables
-Storing keys in plain text in the configuration file is discouraged. Shard CLI supports an `env:` prefix to reference environment variables safely.
+Sessions are stored in `~/.shard/config.toml` (or `%USERPROFILE%\.shard\config.toml` on Windows).
 
-- **Direct Key:** `shard session new prod --key AAAAAA...` (Stores key in plain text on disk).
-- **Secure Reference:** `shard session new prod --key env:MY_KEY` (Only stores the variable name; the key is read from memory at runtime).
-
-### DNS and Domain Support
-You can use domain names (e.g., `localhost:3000` or `server.example.com:5000`) instead of raw IP addresses. The CLI performs automatic DNS resolution before transmission.
+### How it works (Shard 2.0):
+- **Handshake:** When you run `shard send`, the CLI first performs a 1-RTT handshake with the server.
+- **PFS:** Even if your Master PSK is compromised in the future, past captured traffic remains secure.
+- **DNS Support:** Domain names (e.g., `localhost:3000`) are resolved automatically.
+- **Absolute Replay Protection:** The stateful nature allows the server to reject any packet with a sequence ID lower or equal to the last one seen, with no time window limitations.
 
 ---
 
