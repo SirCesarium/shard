@@ -53,7 +53,7 @@ pub async fn exec(port: u16, key: Option<String>) -> Result<()> {
 
     // 4. Start processing loop
     server
-        .listen(|payload| {
+        .listen(|payload, responder| {
             let timestamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
@@ -61,6 +61,12 @@ pub async fn exec(port: u16, key: Option<String>) -> Result<()> {
 
             if let Ok(msg) = String::from_utf8(payload) {
                 println!("[{timestamp}] Received: {msg}");
+
+                // Example: Automated response
+                let response = format!("Command acknowledged: {msg}");
+                tokio::spawn(async move {
+                    let _ = responder.send(response.as_bytes()).await;
+                });
             } else {
                 println!("[{timestamp}] Received binary data");
             }

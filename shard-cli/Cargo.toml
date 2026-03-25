@@ -22,3 +22,4 @@ serde = { version = "1.0.228", features = ["derive"] }
 shard-sdk = { version = "0.2.0", path = "../shard-sdk" }
 tokio = { version = "1.50.0", features = ["full"] }
 toml = "1.1.0"
+rustyline = "17.0.2"

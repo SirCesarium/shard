@@ -1,5 +1,5 @@
 use crate::config::ShardConfig;
-use crate::server::ShardServer;
+use crate::server::{ShardResponder, ShardServer};
 use std::ffi::CStr;
 use std::net::SocketAddr;
 use std::os::raw::{c_char, c_int};
@@ -108,9 +108,9 @@ pub unsafe extern "C" fn shard_start_server(
         };
 
         // Wrap the C callback to be safe for Rust async loop
-        // We must ensure the callback is thread-safe or handled correctly.
-        // For raw function pointers, they are Copy + Send + Sync usually.
-        let callback_wrapper = move |data: Vec<u8>| {
+        // We ignore the responder in this basic FFI bridge for now.
+        // A future update could expose the responder to Java.
+        let callback_wrapper = move |data: Vec<u8>, _responder: ShardResponder| {
             callback(data.as_ptr(), data.len());
         };
 

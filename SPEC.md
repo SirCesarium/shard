@@ -53,7 +53,8 @@ The Poly1305 MAC appended at the end of every packet.
 - **Both parties** derive `SessionKey = HKDF(SharedSecret, Salt=MasterPSK, Info="shard-session-v2")`.
 - All subsequent packets use `TYPE: 0x02` (Data).
 - **Security:** Data frames are **Encrypted and Authenticated** using the `SessionKey`.
-- **Sequence ID:** Both parties track the last `SEQ_ID`. Any packet with `SEQ_ID <= LAST_SEQ` is silently dropped.
+- **Sequence Management:** Each direction (C->S and S->C) maintains its own independent 64-bit monotonic `SEQ_ID`.
+- **Validation:** Both parties track the last `SEQ_ID` received from the peer. Any packet with `SEQ_ID <= LAST_RECEIVED_SEQ` is silently dropped.
 
 ---
 

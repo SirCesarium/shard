@@ -1,9 +1,10 @@
-//! Shard asynchronous UDP client implementation.
+//! Shard asynchronous UDP client implementation with bi-directional support.
 use crate::config::ShardConfig;
 use shard_core::crypto::agreement::{compute_shared_secret, generate_ephemeral_keypair};
 use shard_core::crypto::hkdf::derive_session_key_v2;
 use shard_core::crypto::{decrypt_frame_payload, encrypt_frame_payload};
 use shard_core::frame::{FrameType, ShardFrame, ShardHeader};
+use shard_core::validation::Validator;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -12,12 +13,13 @@ use tokio::time::timeout;
 use zerocopy::IntoBytes;
 use zerocopy::big_endian::{U32, U64};
 
-/// A hardened UDP client for sending encrypted Shard frames.
+/// A hardened UDP client for sending and receiving encrypted Shard frames.
 pub struct ShardClient {
     config: Arc<ShardConfig>,
     socket: Arc<UdpSocket>,
     sequence_id: AtomicU64,
     session_key: [u8; 32],
+    validator: Validator,
 }
 
 impl ShardClient {
@@ -52,7 +54,7 @@ impl ShardClient {
             encrypt_frame_payload(&config.master_psk, &mut init_header, &mut init_payload)
                 .map_err(|e| format!("Init encryption failed: {e}"))?;
 
-        let mut init_packet = Vec::new();
+        let mut init_packet = Vec::with_capacity(34 + 32 + 16);
         init_packet.extend_from_slice(init_header.as_bytes());
         init_packet.extend_from_slice(&init_payload);
         init_packet.extend_from_slice(&init_tag);
@@ -85,9 +87,6 @@ impl ShardClient {
         )
         .map_err(|e| format!("Response decryption failed: {e}"))?;
 
-        if server_pub_payload.len() != 32 {
-            return Err("Invalid server public key length".to_string());
-        }
         let mut server_pub = [0u8; 32];
         server_pub.copy_from_slice(&server_pub_payload);
 
@@ -98,10 +97,11 @@ impl ShardClient {
             .map_err(|e| format!("Session key derivation failed: {e}"))?;
 
         Ok(Self {
-            sequence_id: AtomicU64::new(1), // Data starts at 1
+            sequence_id: AtomicU64::new(1),
             config: Arc::new(config),
             socket: Arc::new(socket),
             session_key,
+            validator: Validator::new(),
         })
     }
 
@@ -114,10 +114,9 @@ impl ShardClient {
     /// Encrypts and sends a payload to the server.
     ///
     /// # Errors
-    /// Returns `ShardError` if encryption fails or `std::io::Error` on network failure.
+    /// Returns `ShardError` if encryption or network transmission fails.
     pub async fn send(&self, payload: &[u8]) -> Result<(), crate::ShardError> {
         let seq = self.sequence_id.fetch_add(1, Ordering::SeqCst);
-
         if seq == u64::MAX {
             return Err(crate::ShardError::InvalidSequence);
         }
@@ -130,14 +129,9 @@ impl ShardClient {
         let mut nonce = [0u8; 12];
         rand::fill(&mut nonce);
 
-        let payload_len_usize = payload.len();
-        if payload_len_usize > shard_core::consts::MAX_PAYLOAD_SIZE {
-            return Err(crate::ShardError::PayloadTooLarge(payload_len_usize));
-        }
-
-        let payload_len_u32: u32 = payload_len_usize
-            .try_into()
-            .map_err(|_| crate::ShardError::InvalidPayloadLength)?;
+        let Ok(payload_len) = u32::try_from(payload.len()) else {
+            return Err(crate::ShardError::PayloadTooLarge(payload.len()));
+        };
 
         let mut header = ShardHeader {
             version: shard_core::consts::VERSION,
@@ -145,7 +139,7 @@ impl ShardClient {
             sequence_id: U64::new(seq),
             timestamp: U64::new(now),
             nonce,
-            payload_len: U32::new(payload_len_u32),
+            payload_len: U32::new(payload_len),
         };
 
         let mut buffer = payload.to_vec();
@@ -162,6 +156,41 @@ impl ShardClient {
             .map_err(|_| crate::ShardError::InvalidFrame)?;
 
         Ok(())
+    }
+
+    /// Waits for an encrypted response from the server.
+    ///
+    /// # Errors
+    /// Returns an error string if receiving or decryption fails.
+    pub async fn receive(&self, timeout_dur: Duration) -> Result<Vec<u8>, String> {
+        let mut buf = [0u8; 2048];
+        let n = timeout(timeout_dur, self.socket.recv(&mut buf))
+            .await
+            .map_err(|_| "Receive timed out".to_string())?
+            .map_err(|e| format!("Receive failed: {e}"))?;
+
+        let frame = ShardFrame::from_bytes(&buf[..n])
+            .map_err(|e| format!("Invalid response frame: {e}"))?;
+
+        if frame.header.frame_type != FrameType::Data as u8 {
+            return Err("Received non-data frame as response".to_string());
+        }
+
+        // Validate server sequence
+        self.validator
+            .check_and_update(frame.header.sequence_id.get(), frame.header.timestamp.get())
+            .map_err(|e| format!("Response validation failed: {e}"))?;
+
+        let mut payload = frame.ciphertext.to_vec();
+        decrypt_frame_payload(
+            &self.session_key,
+            &frame.header,
+            &mut payload,
+            &frame.auth_tag,
+        )
+        .map_err(|e| format!("Response decryption failed: {e}"))?;
+
+        Ok(payload)
     }
 
     /// Returns the remote address this client is connected to.

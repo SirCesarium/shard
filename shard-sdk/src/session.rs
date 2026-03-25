@@ -40,4 +40,10 @@ impl ShardSession {
     pub fn remote_addr(&self) -> std::net::SocketAddr {
         self.inner.remote_addr()
     }
+
+    /// Returns a reference to the inner client for advanced operations (like receiving).
+    #[must_use]
+    pub fn inner_client(&self) -> &crate::client::ShardClient {
+        &self.inner
+    }
 }

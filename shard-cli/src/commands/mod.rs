@@ -3,6 +3,8 @@ pub mod keygen;
 pub mod listen;
 pub mod send;
 pub mod session;
+pub mod shell;
+pub mod util;
 
 use clap::{Parser, Subcommand};
 
@@ -33,6 +35,15 @@ pub enum Commands {
         /// The message payload.
         message: String,
         /// Remote address (e.g., example.com:5000). Optional if in a session.
+        #[arg(short, long)]
+        to: Option<String>,
+        /// Master PSK (Base64). Optional if in a session.
+        #[arg(short, long)]
+        key: Option<String>,
+    },
+    /// Open an interactive shell to send multiple commands using a single handshake.
+    Shell {
+        /// Remote address. Optional if in a session.
         #[arg(short, long)]
         to: Option<String>,
         /// Master PSK (Base64). Optional if in a session.

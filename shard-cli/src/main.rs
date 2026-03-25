@@ -20,6 +20,9 @@ async fn main() -> Result<()> {
         Commands::Send { message, to, key } => {
             commands::send::exec(message, to, key).await?;
         }
+        Commands::Shell { to, key } => {
+            commands::shell::exec(to, key).await?;
+        }
         Commands::Session { command } => {
             commands::session::exec(command)?;
         }
