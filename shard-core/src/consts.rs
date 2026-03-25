@@ -1,7 +1,7 @@
-//! Protocol constants as defined in Shard v1.0.
+//! Protocol constants as defined in Shard v2.0.
 
 /// Current protocol version.
-pub const VERSION: u8 = 0x01;
+pub const VERSION: u8 = 0x02;
 /// Maximum allowed ciphertext length to ensure MTU compliance (1024 bytes).
 pub const MAX_PAYLOAD_SIZE: usize = 1024;
 /// Total size of the fixed header in bytes (Offsets 0 to 33).

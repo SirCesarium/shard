@@ -5,6 +5,34 @@ use crate::error::ShardError;
 use zerocopy::byteorder::big_endian::{U32, U64};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
+/// Frame type identifiers as per Shard 2.0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum FrameType {
+    /// Initial handshake request (Client -> Server).
+    HandshakeInit = 0x00,
+    /// Handshake response (Server -> Client).
+    HandshakeResponse = 0x01,
+    /// Encrypted data payload.
+    Data = 0x02,
+    /// Unencrypted error notification.
+    Error = 0x03,
+}
+
+impl TryFrom<u8> for FrameType {
+    type Error = ShardError;
+
+    fn try_from(value: u8) -> Result<Self, ShardError> {
+        match value {
+            0x00 => Ok(Self::HandshakeInit),
+            0x01 => Ok(Self::HandshakeResponse),
+            0x02 => Ok(Self::Data),
+            0x03 => Ok(Self::Error),
+            _ => Err(ShardError::InvalidFrame),
+        }
+    }
+}
+
 /// Fixed-size header structure of a Shard packet.
 ///
 /// Total size: 34 bytes.
@@ -12,9 +40,9 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 #[derive(Debug, Clone, Copy, Immutable, IntoBytes, FromBytes, KnownLayout)]
 #[repr(C, packed)]
 pub struct ShardHeader {
-    /// Protocol version (0x01).
+    /// Protocol version (0x02).
     pub version: u8,
-    /// Frame type identifier.
+    /// Frame type identifier (0x00-0x03).
     pub frame_type: u8,
     /// 64-bit monotonically increasing sequence ID (Big Endian).
     pub sequence_id: U64,
@@ -34,7 +62,7 @@ impl ShardHeader {
     #[must_use]
     pub fn create_error_response(&self, error_code: u8) -> Vec<u8> {
         let mut header = *self;
-        header.frame_type = 0x02; // Error Type
+        header.frame_type = FrameType::Error as u8;
         header.payload_len = U32::new(1);
 
         let mut buffer = Vec::with_capacity(HEADER_SIZE + 1 + AUTH_TAG_SIZE);
@@ -60,9 +88,7 @@ impl<'a> ShardFrame<'a> {
     /// Parses a raw byte buffer into a `ShardFrame`.
     ///
     /// # Errors
-    /// Returns `ShardError::BufferTooSmall` if the buffer size is less than 50 bytes.
-    /// Returns `ShardError::InvalidVersion` if the version field is not 0x01.
-    /// Returns `ShardError::InvalidPayloadLength` if the payload length exceeds the hard cap.
+    /// Returns `ShardError::InvalidFrame` if the buffer is malformed or types are invalid.
     pub fn from_bytes(buffer: &'a [u8]) -> Result<Self, ShardError> {
         #[cfg(debug_assertions)]
         let internal_error = |e: &str| {
@@ -71,6 +97,7 @@ impl<'a> ShardFrame<'a> {
         };
         #[cfg(not(debug_assertions))]
         let internal_error = |_e: &str| ShardError::InvalidFrame;
+
         if buffer.len() < HEADER_SIZE + AUTH_TAG_SIZE {
             return Err(internal_error("Buffer too small"));
         }
@@ -86,6 +113,9 @@ impl<'a> ShardFrame<'a> {
         if header.version != VERSION {
             return Err(internal_error("Version mismatch"));
         }
+
+        // Validate Frame Type
+        let _ = FrameType::try_from(header.frame_type)?;
 
         // Parse and validate payload length (Section 2.3).
         let payload_len_raw = header.payload_len.get();
@@ -143,7 +173,7 @@ mod tests {
 
         let mut header = ShardHeader {
             version: VERSION,
-            frame_type: 0,
+            frame_type: FrameType::Data as u8,
             sequence_id: U64::new(1),
             timestamp: U64::new(0),
             nonce,
@@ -160,6 +190,7 @@ mod tests {
         let frame = ShardFrame::from_bytes(&buffer)?;
 
         assert_eq!(frame.header.version, VERSION);
+        assert_eq!(frame.header.frame_type, FrameType::Data as u8);
         assert_eq!(frame.ciphertext.len(), 5);
         assert_eq!(frame.auth_tag, tag);
 
@@ -176,7 +207,7 @@ mod tests {
     #[test]
     fn test_invalid_version() {
         let mut buffer = vec![0u8; 50];
-        buffer[0] = 0x02;
+        buffer[0] = 0x01; // Old version
         let result = ShardFrame::from_bytes(&buffer);
         assert!(matches!(result, Err(ShardError::InvalidFrame)));
     }
@@ -184,7 +215,7 @@ mod tests {
     #[test]
     fn test_payload_length_overflow() {
         let mut buffer = vec![0u8; 1100];
-        buffer[0] = 0x01;
+        buffer[0] = VERSION;
         let overflow_len = 1025u32;
         buffer[30..34].copy_from_slice(&overflow_len.to_be_bytes());
 
@@ -196,7 +227,7 @@ mod tests {
     fn test_error_frame_creation_and_parsing() -> Result<(), ShardError> {
         let header = ShardHeader {
             version: VERSION,
-            frame_type: 0x00,
+            frame_type: FrameType::Data as u8,
             sequence_id: U64::new(1),
             timestamp: U64::new(0),
             nonce: [0u8; 12],
@@ -207,7 +238,7 @@ mod tests {
         let response = header.create_error_response(error_code);
 
         let frame = ShardFrame::from_bytes(&response)?;
-        assert_eq!(frame.header.frame_type, 0x02);
+        assert_eq!(frame.header.frame_type, FrameType::Error as u8);
         assert_eq!(frame.header.payload_len.get(), 1);
         assert_eq!(frame.ciphertext[0], error_code);
         assert_eq!(frame.auth_tag, [0u8; 16]);
@@ -222,7 +253,6 @@ mod tests {
         buffer[0] = VERSION; // Force correct version but rest is garbage
 
         let result = ShardFrame::from_bytes(&buffer);
-        // Most likely to fail due to payload length or total size mismatch
         assert!(result.is_err());
     }
 }

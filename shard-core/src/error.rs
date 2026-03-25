@@ -20,7 +20,7 @@ pub enum ShardError {
     /// Version mismatch found during parsing (Section 1).
     #[error("Unsupported protocol version: expected {expected}, found {found}")]
     InvalidVersion {
-        /// The version we expect (0x01).
+        /// The version we expect (0x02).
         expected: u8,
         /// The version we got.
         found: u8,
