@@ -20,12 +20,14 @@ async fn main() -> Result<()> {
         Commands::Send { message, to, key } => {
             commands::send::exec(message, to, key).await?;
         }
-        Commands::Session { name, to, key } => {
-            commands::session::exec(&name, to, key)?;
+        Commands::Session { command } => {
+            commands::session::exec(command)?;
         }
-        Commands::Exit => {
-            state::SessionState::clear();
-            println!("Session cleared successfully.");
+        Commands::Logout => {
+            let mut config = state::Config::load()?;
+            config.clear_active();
+            config.save()?;
+            println!("Logged out from current session successfully.");
         }
     }
 

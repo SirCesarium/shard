@@ -1,32 +1,51 @@
-//! Implementation of the session command for Shard CLI.
-use crate::state::SessionState;
-use miette::{IntoDiagnostic, Result};
-use std::net::SocketAddr;
-use std::time::{SystemTime, UNIX_EPOCH};
+//! Implementation of the session management commands.
+use crate::commands::SessionCommands;
+use crate::state::Config;
+use miette::Result;
 
-/// Creates a new temporary session.
-pub fn exec(name: &str, to: SocketAddr, key: String) -> Result<()> {
-    // Session expires in 8 hours by default.
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .into_diagnostic()?;
+/// Executes session subcommands.
+pub fn exec(command: SessionCommands) -> Result<()> {
+    let mut config = Config::load()?;
 
-    let expires_at = now.as_secs() + (8 * 3600);
+    match command {
+        SessionCommands::New { name, to, key } => {
+            if !key.starts_with("env:") {
+                println!("[!] SECURITY WARNING: Storing keys in plain text is not recommended.");
+                println!("    Use '--key env:YOUR_VAR' to reference an environment variable instead.");
+            }
+            config.set_session(name.clone(), to.clone(), key);
+            config.save()?;
+            println!("Session '{name}' created and activated.");
+            println!("Target: {to}");
+        }
+        SessionCommands::List => {
+            if config.sessions.is_empty() {
+                println!("No sessions found.");
+                return Ok(());
+            }
 
-    let state = SessionState {
-        master_psk: key,
-        remote_addr: to,
-        expires_at,
-    };
-
-    state.save()?;
-
-    println!("Session '{name}' established.");
-    println!("Destination: {to}");
-    println!("This session will expire in 8 hours or upon calling 'exit'.");
-
-    if std::env::var("SHARD_KEY").is_err() {
-        println!("\n[!] Hint: You can also set the SHARD_KEY env var for global use.");
+            println!("{:<15} {:<25} Status", "Name", "Target");
+            println!("{:-<50}", "");
+            
+            for (name, session) in &config.sessions {
+                let status = if config.active_session.as_ref() == Some(name) {
+                    "Active"
+                } else {
+                    ""
+                };
+                println!("{:<15} {:<25} {}", name, session.remote_addr, status);
+            }
+        }
+        SessionCommands::Use { name } => {
+            config.use_session(&name)?;
+            config.save()?;
+            println!("Switched to session '{name}'.");
+        }
+        SessionCommands::Delete { name } => {
+            config.delete_session(&name);
+            config.save()?;
+            println!("Session '{name}' deleted.");
+        }
     }
 
     Ok(())

@@ -1,25 +1,32 @@
 //! Implementation of the listen command for Shard CLI.
-use crate::state::SessionState;
-use base64::{Engine as _, engine::general_purpose};
-use miette::{IntoDiagnostic, Result, miette};
+use crate::state::Config;
+use base64::{engine::general_purpose, Engine as _};
+use miette::{miette, IntoDiagnostic, Result};
 use shard_sdk::config::ShardConfig;
 use shard_sdk::server::ShardServer;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 /// Executes the listen command to start a Shard server.
-///
-/// Key resolution priority:
-/// 1. Explicit CLI argument (--key).
-/// 2. Environment variable (`SHARD_KEY`).
-/// 3. Active session state.
 pub async fn exec(port: u16, key: Option<String>) -> Result<()> {
+    let config_state = Config::load()?;
+    let active = config_state.get_active();
+
     // 1. Resolve Key
-    let raw_key = key
-        .or_else(|| std::env::var("SHARD_KEY").ok())
-        .or_else(|| SessionState::load().map(|s| s.master_psk))
-        .ok_or_else(|| {
-            miette!("No Master PSK found. Use --key, set SHARD_KEY, or start a session.")
-        })?;
+    let raw_key = if let Some(k) = key {
+        if let Some(var_name) = k.strip_prefix("env:") {
+            std::env::var(var_name)
+                .into_diagnostic()
+                .map_err(|_| miette!("Environment variable '{}' not found", var_name))?
+        } else {
+            k
+        }
+    } else if let Ok(env_key) = std::env::var("SHARD_KEY") {
+        env_key
+    } else if let Some((_, s)) = active {
+        s.resolve_key()?
+    } else {
+        return Err(miette!("No Master PSK found. Use --key, set SHARD_KEY, or start a session."));
+    };
 
     // 2. Decode Key
     let mut master_psk = [0u8; 32];
@@ -34,10 +41,9 @@ pub async fn exec(port: u16, key: Option<String>) -> Result<()> {
     master_psk.copy_from_slice(&decoded);
 
     // 3. Initialize Server
-    // We bind to 0.0.0.0 to listen on all interfaces.
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
-    let config = ShardConfig::new(master_psk, addr);
-    let server = ShardServer::bind(config).await.into_diagnostic()?;
+    let shard_config = ShardConfig::new(master_psk, addr);
+    let server = ShardServer::bind(shard_config).await.into_diagnostic()?;
 
     println!("Shard server listening on {addr}");
     println!("Encryption: ChaCha20-Poly1305");
@@ -54,7 +60,7 @@ pub async fn exec(port: u16, key: Option<String>) -> Result<()> {
             if let Ok(msg) = String::from_utf8(payload) {
                 println!("[{timestamp}] Received: {msg}");
             } else {
-                println!("[{timestamp}] Received binary data (hex parsing omitted)");
+                println!("[{timestamp}] Received binary data");
             }
         })
         .await

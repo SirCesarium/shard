@@ -32,24 +32,46 @@ pub enum Commands {
     Send {
         /// The message payload.
         message: String,
-        /// Remote address (e.g., 127.0.0.1:5000). Optional if in a session.
+        /// Remote address (e.g., example.com:5000). Optional if in a session.
         #[arg(short, long)]
-        to: Option<std::net::SocketAddr>,
+        to: Option<String>,
         /// Master PSK (Base64). Optional if in a session.
         #[arg(short, long)]
         key: Option<String>,
     },
-    /// Start a temporary session to avoid repeating keys and addresses.
+    /// Manage sessions to avoid repeating keys and addresses.
     Session {
-        /// Name for the session (logging purposes).
+        #[command(subcommand)]
+        command: SessionCommands,
+    },
+    /// Logout from the current active session.
+    Logout,
+}
+
+/// Session management subcommands.
+#[derive(Subcommand)]
+pub enum SessionCommands {
+    /// Create a new session.
+    New {
+        /// Name for the session.
         name: String,
-        /// Remote address to bind the session to.
+        /// Remote address (supports domain:port).
         #[arg(short, long)]
-        to: std::net::SocketAddr,
+        to: String,
         /// Master PSK (Base64).
         #[arg(short, long)]
         key: String,
     },
-    /// Clear the current active session.
-    Exit,
+    /// List all saved sessions.
+    List,
+    /// Use a specific session by name.
+    Use {
+        /// The name of the session to activate.
+        name: String,
+    },
+    /// Delete a session.
+    Delete {
+        /// The name of the session to remove.
+        name: String,
+    },
 }
