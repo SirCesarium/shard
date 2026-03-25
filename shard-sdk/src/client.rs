@@ -98,10 +98,10 @@ impl ShardClient {
 
         Ok(Self {
             sequence_id: AtomicU64::new(1),
-            config: Arc::new(config),
+            config: Arc::new(config.clone()),
             socket: Arc::new(socket),
             session_key,
-            validator: Validator::new(),
+            validator: Validator::new(config.drift_window_ms),
         })
     }
 

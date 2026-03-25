@@ -1,5 +1,4 @@
 //! Section 3: Anti-Replay & State Control.
-use crate::consts::MAX_TIMESTAMP_DRIFT_MS;
 use crate::error::ShardError;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -7,14 +6,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// State controller for sequence and timestamp validation.
 pub struct Validator {
     last_seq: AtomicU64,
+    drift_window_ms: u64,
 }
 
 impl Validator {
-    /// Creates a new validator starting from sequence 0.
+    /// Creates a new validator with the specified drift window and starting sequence 0.
     #[must_use]
-    pub const fn new() -> Self {
+    pub const fn new(drift_window_ms: u64) -> Self {
         Self {
             last_seq: AtomicU64::new(0),
+            drift_window_ms,
         }
     }
 
@@ -22,7 +23,7 @@ impl Validator {
     ///
     /// # Errors
     /// - `ShardError::InvalidSequence`: If `SEQUENCE_ID` <= `LAST_SEQ`.
-    /// - `ShardError::TimestampOutOfWindow`: If drift > 5000ms.
+    /// - `ShardError::TimestampOutOfWindow`: If drift > `drift_window_ms`.
     pub fn check_and_update(&self, sequence_id: u64, timestamp: u64) -> Result<(), ShardError> {
         #[cfg(debug_assertions)]
         let internal_error = |e: &str| {
@@ -41,7 +42,7 @@ impl Validator {
         // 1. Temporal Windowing (Section 3.2)
         // If the drift is too high, we drop silently via ShardError.
         let drift = now_ms.abs_diff(timestamp);
-        if drift > MAX_TIMESTAMP_DRIFT_MS {
+        if drift > self.drift_window_ms {
             return Err(internal_error("Timestamp drift too high"));
         }
 
@@ -67,13 +68,14 @@ impl Validator {
 
 impl Default for Validator {
     fn default() -> Self {
-        Self::new()
+        Self::new(crate::consts::MAX_TIMESTAMP_DRIFT_MS)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::consts::MAX_TIMESTAMP_DRIFT_MS;
 
     fn current_ts() -> u64 {
         #[allow(clippy::expect_used)]
@@ -87,7 +89,7 @@ mod tests {
 
     #[test]
     fn test_sequence_monotonicity() {
-        let validator = Validator::new();
+        let validator = Validator::new(MAX_TIMESTAMP_DRIFT_MS);
 
         // Initial sequence 10 is valid.
         assert!(validator.check_and_update(10, current_ts()).is_ok());
@@ -110,7 +112,7 @@ mod tests {
 
     #[test]
     fn test_timestamp_window_drift() {
-        let validator = Validator::new();
+        let validator = Validator::new(MAX_TIMESTAMP_DRIFT_MS);
         // We use a manual check against drift since the validator uses SystemTime::now() internally.
         // To make this test deterministic, we must be very close to 'now'.
         let now = current_ts();
@@ -136,7 +138,7 @@ mod tests {
 
     #[test]
     fn test_network_reordering_regression() {
-        let validator = Validator::new();
+        let validator = Validator::new(MAX_TIMESTAMP_DRIFT_MS);
         let now = current_ts();
 
         // Packet 2 arrives first (valid)
@@ -157,7 +159,7 @@ mod tests {
         use std::sync::Arc;
         use std::thread;
 
-        let validator = Arc::new(Validator::new());
+        let validator = Arc::new(Validator::new(MAX_TIMESTAMP_DRIFT_MS));
         let mut handles = vec![];
 
         for i in 1..=100 {
@@ -174,5 +176,23 @@ mod tests {
         }
 
         assert_eq!(validator.last_seq.load(Ordering::SeqCst), 100);
+    }
+}
+
+#[cfg(test)]
+mod benches {
+    use super::*;
+    use crate::consts::MAX_TIMESTAMP_DRIFT_MS;
+
+    #[allow(dead_code)]
+    fn bench_validation() {
+        let validator = Validator::new(MAX_TIMESTAMP_DRIFT_MS);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        for i in 1..1000 {
+            let _ = validator.check_and_update(i, now);
+        }
     }
 }

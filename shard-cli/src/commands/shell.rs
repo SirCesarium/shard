@@ -8,12 +8,13 @@ use shard_sdk::session::ShardSession;
 use std::time::Duration;
 
 /// Executes the interactive shell.
-pub async fn exec(to: Option<String>, key: Option<String>) -> Result<()> {
+pub async fn exec(to: Option<String>, key: Option<String>, drift: u64) -> Result<()> {
     let (master_psk, addr, addr_str) = resolve_target(to, key).await?;
 
     // 1. Handshake (Performed ONCE)
     println!("Connecting to {addr} ({addr_str})...");
-    let shard_config = ShardConfig::new(master_psk, addr);
+    let mut shard_config = ShardConfig::new(master_psk, addr);
+    shard_config.drift_window_ms = drift;
     let session = ShardSession::new(shard_config)
         .await
         .map_err(|e| miette!("Handshake failed: {e}"))?;

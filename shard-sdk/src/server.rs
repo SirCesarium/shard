@@ -192,7 +192,7 @@ impl ShardServer {
             peer,
             Arc::new(PeerSession {
                 session_key,
-                validator: Validator::new(),
+                validator: Validator::new(config.drift_window_ms),
                 outgoing_seq: Arc::new(AtomicU64::new(1)),
             }),
         );

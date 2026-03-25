@@ -14,14 +14,14 @@ async fn main() -> Result<()> {
         Commands::Keygen => {
             commands::keygen::exec();
         }
-        Commands::Listen { port, key } => {
-            commands::listen::exec(port, key).await?;
+        Commands::Listen { port, key, drift } => {
+            commands::listen::exec(port, key, drift).await?;
         }
-        Commands::Send { message, to, key } => {
-            commands::send::exec(message, to, key).await?;
+        Commands::Send { message, to, key, drift } => {
+            commands::send::exec(message, to, key, drift).await?;
         }
-        Commands::Shell { to, key } => {
-            commands::shell::exec(to, key).await?;
+        Commands::Shell { to, key, drift } => {
+            commands::shell::exec(to, key, drift).await?;
         }
         Commands::Session { command } => {
             commands::session::exec(command)?;

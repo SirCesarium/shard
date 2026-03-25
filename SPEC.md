@@ -1,10 +1,10 @@
-# Shard Protocol Specification v2.0
+# Shard Protocol Specification v2.1
 
-**Status:** Draft / Major Update  
+**Status:** Draft / Minor Update  
 **Scope:** Stateful, Encrypted Binary Transport over UDP with Perfect Forward Secrecy (PFS).
 
 ## 1. Introduction
-Shard 2.0 is a stateful application-layer protocol designed for secure, low-latency command delivery. It introduces a high-performance handshake mechanism using X25519 (ECDH) to establish unique session keys, ensuring Perfect Forward Secrecy and absolute protection against replay attacks.
+Shard 2.1 is a stateful application-layer protocol designed for secure, low-latency command delivery. It builds upon Shard 2.0 by formalizing temporal validation windows to protect against delayed replay attacks while maintaining compatibility for high-jitter environments.
 
 ## 2. Cryptographic Primitives
 Shard 2.0 utilizes industry-standard primitives:
@@ -54,14 +54,18 @@ The Poly1305 MAC appended at the end of every packet.
 - All subsequent packets use `TYPE: 0x02` (Data).
 - **Security:** Data frames are **Encrypted and Authenticated** using the `SessionKey`.
 - **Sequence Management:** Each direction (C->S and S->C) maintains its own independent 64-bit monotonic `SEQ_ID`.
-- **Validation:** Both parties track the last `SEQ_ID` received from the peer. Any packet with `SEQ_ID <= LAST_RECEIVED_SEQ` is silently dropped.
+- **Validation:** 
+    1. **Sequence Check:** Both parties track the last `SEQ_ID` received from the peer. Any packet with `SEQ_ID <= LAST_RECEIVED_SEQ` is silently dropped.
+    2. **Temporal Windowing (Drift):** The `TIMESTAMP` in the header MUST be within a defined drift window relative to the receiver's local clock to prevent delayed replay attacks.
+    3. **Configurability:** The default window is **5000ms**, but implementations SHOULD allow adjustment for high-jitter environments (e.g., tunnels or mobile networks).
 
 ---
 
 ## 5. Security Mandates
-1. **Silent Drop:** If a packet fails authentication (AEAD check), it MUST be silently discarded.
+1. **Silent Drop:** If a packet fails authentication (AEAD check) or validation (Sequence/Timestamp), it MUST be silently discarded.
 2. **Perfect Forward Secrecy:** Since session keys are derived from ephemeral ECDH secrets, compromising the Master PSK does not allow decryption of past traffic.
 3. **Anti-DoS:** Servers SHOULD implement a rate limiter on `Handshake Init` frames.
+4. **Clock Sync:** While Shard does not require microsecond precision, devices SHOULD use NTP or similar to ensure clocks are within the configured drift window.
 
 ## 6. Implementation Notes
 - **Zero-Copy:** Implementations should use zero-copy parsing for the header.

@@ -7,7 +7,7 @@ use shard_sdk::server::ShardServer;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 /// Executes the listen command to start a Shard server.
-pub async fn exec(port: u16, key: Option<String>) -> Result<()> {
+pub async fn exec(port: u16, key: Option<String>, drift: u64) -> Result<()> {
     let config_state = Config::load()?;
     let active = config_state.get_active();
 
@@ -44,7 +44,8 @@ pub async fn exec(port: u16, key: Option<String>) -> Result<()> {
 
     // 3. Initialize Server
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
-    let shard_config = ShardConfig::new(master_psk, addr);
+    let mut shard_config = ShardConfig::new(master_psk, addr);
+    shard_config.drift_window_ms = drift;
     let server = ShardServer::bind(shard_config).await.into_diagnostic()?;
 
     println!("Shard server listening on {addr}");

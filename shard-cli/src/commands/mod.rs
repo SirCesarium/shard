@@ -29,6 +29,9 @@ pub enum Commands {
         /// Master PSK (Base64). If omitted, looks for `SHARD_KEY` env var or active session.
         #[arg(short, long)]
         key: Option<String>,
+        /// Maximum allowed clock drift for timestamp validation (milliseconds).
+        #[arg(short, long, default_value_t = 5000)]
+        drift: u64,
     },
     /// Send an encrypted message to a Shard server.
     Send {
@@ -40,6 +43,9 @@ pub enum Commands {
         /// Master PSK (Base64). Optional if in a session.
         #[arg(short, long)]
         key: Option<String>,
+        /// Maximum allowed clock drift for timestamp validation (milliseconds).
+        #[arg(short, long, default_value_t = 5000)]
+        drift: u64,
     },
     /// Open an interactive shell to send multiple commands using a single handshake.
     Shell {
@@ -49,6 +55,9 @@ pub enum Commands {
         /// Master PSK (Base64). Optional if in a session.
         #[arg(short, long)]
         key: Option<String>,
+        /// Maximum allowed clock drift for timestamp validation (milliseconds).
+        #[arg(short, long, default_value_t = 5000)]
+        drift: u64,
     },
     /// Manage sessions to avoid repeating keys and addresses.
     Session {
