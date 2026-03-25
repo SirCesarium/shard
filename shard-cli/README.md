@@ -9,14 +9,18 @@ cargo install shard-cli
 ```
 *Binary name: `shard`*
 
-## The Concept of Sessions
+## Sessions and Persistence
 
-Unlike traditional TCP sessions, Shard is **stateless** yet **monotonic**. 
+Shard CLI supports persistent, named sessions. Unlike simple environment variables, sessions are stored in `~/.shard/config.toml` (or `%USERPROFILE%\.shard\config.toml` on Windows) and remain available across terminal restarts and reboots.
 
-### How it works:
-- **Statelessness:** The server does not need to store persistent session state to disk.
-- **Monotonicity:** To prevent replay attacks, every packet must have a higher Sequence ID than the last one received.
-- **The Solution:** The `shard` CLI initializes its starting Sequence ID using high-precision **Unix nanoseconds**. This ensures that even if you stop and restart the CLI, the next packet will always have a significantly higher Sequence ID, satisfying the server's anti-replay checks without requiring a database.
+### Key Security and Environment Variables
+Storing keys in plain text in the configuration file is discouraged. Shard CLI supports an `env:` prefix to reference environment variables safely.
+
+- **Direct Key:** `shard session new prod --key AAAAAA...` (Stores key in plain text on disk).
+- **Secure Reference:** `shard session new prod --key env:MY_KEY` (Only stores the variable name; the key is read from memory at runtime).
+
+### DNS and Domain Support
+You can use domain names (e.g., `localhost:3000` or `server.example.com:5000`) instead of raw IP addresses. The CLI performs automatic DNS resolution before transmission.
 
 ---
 
@@ -28,21 +32,39 @@ Generate a cryptographically secure 32-byte Master Pre-Shared Key (PSK) encoded 
 shard keygen
 ```
 
-### 2. Listening (Server Mode)
-Start a secure listener. It will silently drop any packet that doesn't pass the AEAD integrity check, effectively making your server invisible to port scanners.
-```bash
-shard listen --port 3000 --key <BASE64_KEY>
-```
-- `--port`: The UDP port to bind to.
-- `--key`: The 32-byte Master PSK (Base64).
+### 2. Session Management
+Create and switch between multiple remote targets easily.
 
-### 3. Sending (Client Mode)
-Send an encrypted command or payload to a remote Shard server.
+- **Create a new session (Secure):**
+  ```bash
+  export MY_PROD_KEY="AAAAA..."
+  shard session new prod-server --to example.com:3000 --key env:MY_PROD_KEY
+  ```
+- **List all sessions:**
+  ```bash
+  shard session list
+  ```
+- **Switch to a different session:**
+  ```bash
+  shard session use dev-server
+  ```
+- **Logout (clear active session):**
+  ```bash
+  shard logout
+  ```
+
+### 3. Listening (Server Mode)
+Start a secure listener.
 ```bash
-shard send "system:status" --to 127.0.0.1:3000 --key <BASE64_KEY>
+shard listen --port 3000
 ```
-- `--to`: Target `IP:PORT`.
-- `--key`: The Master PSK (must match the server's key).
+
+### 4. Sending (Client Mode)
+Send an encrypted command or payload.
+```bash
+shard send "system:status"
+```
+*You can always override the session by providing `--to` or `--key` explicitly.*
 
 ## Features
 - **Zero-Trust Defaults:** No response is sent unless the packet is fully authenticated.

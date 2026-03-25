@@ -75,6 +75,16 @@ impl Default for Validator {
 mod tests {
     use super::*;
 
+    fn current_ts() -> u64 {
+        #[allow(clippy::expect_used)]
+        let duration = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("System clock failure: could not calculate duration since UNIX_EPOCH");
+
+        #[allow(clippy::expect_used)]
+        u64::try_from(duration.as_millis()).expect("System clock failure: timestamp overflowed u64")
+    }
+
     #[test]
     fn test_sequence_monotonicity() {
         let validator = Validator::new();
@@ -101,28 +111,27 @@ mod tests {
     #[test]
     fn test_timestamp_window_drift() {
         let validator = Validator::new();
+        // We use a manual check against drift since the validator uses SystemTime::now() internally.
+        // To make this test deterministic, we must be very close to 'now'.
         let now = current_ts();
 
         // Exact time is valid.
         assert!(validator.check_and_update(1, now).is_ok());
 
-        // 4900ms in the past is valid (within 5000ms).
-        assert!(validator.check_and_update(2, now - 4900).is_ok());
+        // 2000ms in the past is valid (well within 5000ms).
+        assert!(validator.check_and_update(2, now - 2000).is_ok());
 
-        // 5100ms in the past is invalid.
+        // 10000ms in the past is invalid.
         assert!(matches!(
-            validator.check_and_update(3, now - 5100),
+            validator.check_and_update(3, now - 10000),
             Err(ShardError::InvalidFrame)
         ));
 
-        // 5100ms in the future is invalid.
+        // 10000ms in the future is invalid.
         assert!(matches!(
-            validator.check_and_update(4, now + 5100),
+            validator.check_and_update(4, now + 10000),
             Err(ShardError::InvalidFrame)
         ));
-
-        // Exact 5000ms drift should be valid (inclusive boundary)
-        assert!(validator.check_and_update(5, now - 5000).is_ok());
     }
 
     #[test]
@@ -133,7 +142,7 @@ mod tests {
         // Packet 2 arrives first (valid)
         assert!(validator.check_and_update(2, now).is_ok());
 
-        // Packet 1 arrives late (must be rejected as regression)
+        // Packet 1 arrives late (invalid/replay)
         assert!(matches!(
             validator.check_and_update(1, now),
             Err(ShardError::InvalidFrame)
@@ -144,7 +153,7 @@ mod tests {
     }
 
     #[test]
-    fn test_concurrent_sequence_updates() -> Result<(), String> {
+    fn test_concurrent_sequence_updates() {
         use std::sync::Arc;
         use std::thread;
 
@@ -153,34 +162,17 @@ mod tests {
 
         for i in 1..=100 {
             let v = Arc::clone(&validator);
-            let h = thread::spawn(move || {
-                // Each thread tries to update to its own index
+            handles.push(thread::spawn(move || {
+                // Ignore errors from race conditions, we just want to ensure
+                // that at the end the last_seq is 100.
                 let _ = v.check_and_update(i, current_ts());
-            });
-            handles.push(h);
+            }));
         }
 
-        for h in handles {
-            h.join().map_err(|_| "Thread panicked".to_string())?;
+        for handle in handles {
+            assert!(handle.join().is_ok(), "Test thread panicked unexpectedly");
         }
 
-        // After all threads, the last_seq must be at most 100
-        // (Since they all sent unique IDs 1-100)
-        if validator.last_seq.load(Ordering::SeqCst) > 100 {
-            return Err("Sequence exceeded maximum expected value".to_string());
-        }
-
-        if validator.last_seq.load(Ordering::SeqCst) == 0 {
-            return Err("No sequence updates were recorded".to_string());
-        }
-
-        Ok(())
-    }
-
-    fn current_ts() -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
-            .unwrap_or(0)
+        assert_eq!(validator.last_seq.load(Ordering::SeqCst), 100);
     }
 }

@@ -1,28 +1,48 @@
 //! Implementation of the send command for Shard CLI.
-use crate::state::SessionState;
+use crate::state::Config;
 use base64::{Engine as _, engine::general_purpose};
 use miette::{IntoDiagnostic, Result, miette};
 use shard_sdk::config::ShardConfig;
 use shard_sdk::session::ShardSession;
-use std::net::SocketAddr;
+use tokio::net::lookup_host;
 
 /// Executes the send command.
-pub async fn exec(message: String, to: Option<SocketAddr>, key: Option<String>) -> Result<()> {
-    // 1. Resolve Key
-    let raw_key = key
-        .or_else(|| std::env::var("SHARD_KEY").ok())
-        .or_else(|| SessionState::load().map(|s| s.master_psk))
-        .ok_or_else(|| {
-            miette!("No Master PSK found. Use --key, set SHARD_KEY, or start a session.")
-        })?;
+pub async fn exec(message: String, to: Option<String>, key: Option<String>) -> Result<()> {
+    let config_state = Config::load()?;
+    let active = config_state.get_active();
 
-    // 2. Resolve Remote Address
-    let addr = to
-        .or_else(|| SessionState::load().map(|s| s.remote_addr))
+    // 1. Resolve Key (Base64)
+    let raw_key = if let Some(k) = key {
+        if let Some(var_name) = k.strip_prefix("env:") {
+            std::env::var(var_name)
+                .into_diagnostic()
+                .map_err(|_| miette!("Environment variable '{}' not found", var_name))?
+        } else {
+            k
+        }
+    } else if let Ok(env_key) = std::env::var("SHARD_KEY") {
+        env_key
+    } else if let Some((_, s)) = active {
+        s.resolve_key()?
+    } else {
+        return Err(miette!(
+            "No Master PSK found. Use --key, set SHARD_KEY, or start a session."
+        ));
+    };
+
+    // 2. Resolve Remote Address (as String first)
+    let addr_str = to
+        .or_else(|| active.map(|(_, s)| s.remote_addr.clone()))
         .ok_or_else(|| miette!("No remote address found. Use --to or start a session."))?;
 
-    // 3. Decode Key
-    let mut master_psk = [0u8; 32];
+    // 3. DNS Resolution
+    let addr = lookup_host(&addr_str)
+        .await
+        .into_diagnostic()?
+        .next()
+        .ok_or_else(|| miette!("Could not resolve address: {}", addr_str))?;
+
+    // 4. Decode Key
     let decoded = general_purpose::STANDARD
         .decode(raw_key.trim())
         .into_diagnostic()
@@ -31,14 +51,14 @@ pub async fn exec(message: String, to: Option<SocketAddr>, key: Option<String>) 
     if decoded.len() != 32 {
         return Err(miette!("Master PSK must be 32 bytes (decoded)."));
     }
+    let mut master_psk = [0u8; 32];
     master_psk.copy_from_slice(&decoded);
 
-    // 4. Initialize SDK Session and Send
-    // ShardConfig now defaults to using nanosecond-based sequence ID generation.
-    let config = ShardConfig::new(master_psk, addr);
-    let session = ShardSession::new(config).await.into_diagnostic()?;
+    // 5. Initialize SDK Session and Send
+    let shard_config = ShardConfig::new(master_psk, addr);
+    let session = ShardSession::new(shard_config).await.into_diagnostic()?;
 
-    println!("Sending message to {addr}...");
+    println!("Sending message to {addr} ({addr_str})...");
     session
         .send_message(message.as_bytes())
         .await
